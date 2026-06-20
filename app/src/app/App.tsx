@@ -36,7 +36,6 @@ import { Slider } from '../components/ui/Slider';
 import { Select } from '../components/ui/Select';
 import { Toggle } from '../components/ui/Toggle';
 import { Tabs } from '../components/ui/Tabs';
-import { KPICard } from '../components/ui/KPICard';
 
 // Constants and Helpers
 import { BUNDESLAND_LABELS, GREST_BY_BUNDESLAND } from '../engine/constants';

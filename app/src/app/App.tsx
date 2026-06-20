@@ -817,13 +817,20 @@ export function App() {
                     </div>
                   </div>
                   {active.objekt.objektTyp === 'denkmal' && (
-                    <NumberInput
-                      label="Sanierungskosten (Denkmal-Topf €)"
-                      value={active.objekt.sanierungskosten}
-                      suffix="EUR"
-                      min={0}
-                      onChange={(val) => updateActive((d) => { d.objekt.sanierungskosten = val; })}
-                    />
+                    <>
+                      <NumberInput
+                        label="Sanierungskosten (Denkmal-Topf €)"
+                        value={active.objekt.sanierungskosten}
+                        suffix="EUR"
+                        min={0}
+                        onChange={(val) => updateActive((d) => { d.objekt.sanierungskosten = val; })}
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                        Kosten für denkmalgerechte Sanierung, die nach §7i EStG abgeschrieben werden können (9 % × 8 Jahre + 7 % × 4 Jahre).
+                        Hierzu zählen z. B. Dach, Fassade, Fenster, Heizung, Elektrik — sofern von der Denkmalschutzbehörde bescheinigt.
+                        Nicht absetzbar: Kaufpreis, Grundstücksanteil, Eigenleistungen, reine Modernisierung ohne Denkmal-Bezug.
+                      </p>
+                    </>
                   )}
                 </div>
               )}

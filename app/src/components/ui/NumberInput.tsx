@@ -40,6 +40,9 @@ export function NumberInput({
     if (suffix === '%') {
       return formatPercent(val, 2);
     }
+    if (suffix === 'plain') {
+      return String(val);
+    }
     if (suffix) {
       return `${formatNumber(val, 0)} ${suffix}`;
     }

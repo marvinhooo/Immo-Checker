@@ -767,6 +767,7 @@ export function App() {
                     <NumberInput
                       label="Baujahr / Fertigstellung"
                       value={active.objekt.fertigstellungsjahr}
+                      suffix="plain"
                       min={1}
                       max={2100}
                       onChange={(val) => updateActive((d) => {
@@ -808,6 +809,11 @@ export function App() {
                         max={100}
                         suffix="%"
                       />
+                      <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                        Anteil des Grundstückswerts am Kaufpreis — nur das Gebäude ist abschreibbar (AfA).
+                        Nachschlagen im <strong>Bodenrichtwert-Informationssystem (BORIS)</strong> Ihres Bundeslandes
+                        oder im Kaufvertrag. Richtwerte: Großstadt 30–50 %, Stadtrand 20–30 %, ländlich 10–20 %.
+                      </p>
                     </div>
                   </div>
                   {active.objekt.objektTyp === 'denkmal' && (

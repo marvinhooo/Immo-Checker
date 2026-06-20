@@ -167,6 +167,65 @@ describe('afa engine - projectAfa', () => {
     expect(projection[0].afaAmount).toBeCloseTo(14000 + 20000, 2);
   });
 
+  it('does not invent a linear residual schedule when Sonder-AfA has a 0% linear rate', () => {
+    const scenario = createDefaultScenario({
+      objekt: {
+        kaufpreis: 100000,
+        wohnflaeche: 100,
+        fertigstellungsjahr: 2024,
+        bundesland: 'NW',
+        objektTyp: 'neubau',
+        bodenwertAnteilPct: 0,
+        sanierungskosten: 0,
+      },
+      knk: {
+        grestPct: 0,
+        notarPct: 0,
+        maklerPct: 0,
+        mitfinanzieren: false,
+      },
+      afa: {
+        modus: 'sonder7b',
+        linearSatzPct: 0,
+      },
+    });
+
+    const projection = projectAfa(scenario, 5);
+
+    expect(projection[0].afaAmount).toBeCloseTo(5000, 2);
+    expect(projection[3].afaAmount).toBeCloseTo(5000, 2);
+    expect(projection[4].afaAmount).toBe(0);
+  });
+
+  it('keeps degressive AfA from switching to a fictional linear schedule at 0% linear rate', () => {
+    const scenario = createDefaultScenario({
+      objekt: {
+        kaufpreis: 100000,
+        wohnflaeche: 100,
+        fertigstellungsjahr: 2024,
+        bundesland: 'NW',
+        objektTyp: 'neubau',
+        bodenwertAnteilPct: 0,
+        sanierungskosten: 0,
+      },
+      knk: {
+        grestPct: 0,
+        notarPct: 0,
+        maklerPct: 0,
+        mitfinanzieren: false,
+      },
+      afa: {
+        modus: 'degressiv',
+        linearSatzPct: 0,
+      },
+    });
+
+    const projection = projectAfa(scenario, 40);
+
+    expect(projection[0].afaAmount).toBeCloseTo(5000, 2);
+    expect(projection[39].afaAmount).toBeCloseTo(projection[39].restwert / 0.95 * 0.05, 2);
+  });
+
   it('should calculate Denkmal-AfA §7i correctly', () => {
     // Altbausubstanz basis = 264,000. Linear rate: 2%.
     // Sanierungskosten basis = 200,000.

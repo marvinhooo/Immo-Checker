@@ -208,6 +208,65 @@ describe('Exit calculation Engine', () => {
     expect(exitRes.spekulationssteuer).toBeCloseTo(400, 2);
   });
 
+  it('includes Soli and Kirchensteuer in flat-rate speculation tax', () => {
+    const scenario = createDefaultScenario({
+      objekt: {
+        kaufpreis: 100000,
+        wohnflaeche: 100,
+        fertigstellungsjahr: 1995,
+        bundesland: 'NW',
+        objektTyp: 'bestand',
+        bodenwertAnteilPct: 100,
+        sanierungskosten: 0,
+      },
+      knk: {
+        grestPct: 0,
+        notarPct: 0,
+        maklerPct: 0,
+        mitfinanzieren: false,
+      },
+      finanzierung: {
+        equityMode: 'percent',
+        equityPct: 100,
+        equityAbsolute: 100000,
+        sollzinsPct: 0,
+        tilgungPct: 0,
+        zinsbindungJahre: 10,
+        anschlusszinsPct: 0,
+        sondertilgungProJahr: 0,
+        disagioPct: 0,
+      },
+      afa: {
+        modus: 'linear',
+        linearSatzPct: 0,
+      },
+      exit: {
+        haltedauerJahre: 1,
+        verkaufsnebenkostenPct: 0,
+        vorfaelligkeitPct: 0,
+      },
+      steuer: {
+        taxMode: 'marginalRate',
+        bruttoJahresEinkommen: 60000,
+        grenzsteuersatzPct: 40,
+        veranlagung: 'single',
+        soli: true,
+        kirchensteuerPct: 9,
+      },
+      wertentwicklung: {
+        szenario: [
+          { id: 'threshold-growth', kind: 'rate', fromYear: 1, percentPerYear: 1 },
+        ],
+      },
+    });
+
+    const exitRes = calculateExit(scenario, runProjection(scenario));
+    const baseTax = exitRes.spekulationsGewinn * 0.4;
+
+    expect(exitRes.spekulationsGewinn).toBeCloseTo(1000, 2);
+    expect(exitRes.spekulationssteuer).toBeCloseTo(baseTax * (1 + 0.055 + 0.09), 2);
+  });
+
   it('deducts renovation costs from the speculation gain basis', () => {
     const scenario = createDefaultScenario({
       objekt: {

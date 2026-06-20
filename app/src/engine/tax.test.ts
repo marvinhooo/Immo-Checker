@@ -90,6 +90,25 @@ describe('tax engine - calculateTaxEffect', () => {
     expect(calculateTaxEffect(scenario, 5000)).toBeCloseTo(2100, 2);
   });
 
+  it('should include Soli and Kirchensteuer in flat marginal rate mode', () => {
+    const scenario = createDefaultScenario({
+      steuer: {
+        taxMode: 'marginalRate',
+        bruttoJahresEinkommen: 80000,
+        grenzsteuersatzPct: 40,
+        veranlagung: 'single',
+        soli: true,
+        kirchensteuerPct: 9,
+      }
+    });
+
+    const baseTax = 1000 * 0.4;
+    const expectedTax = baseTax * (1 + 0.055 + 0.09);
+
+    expect(calculateTaxEffect(scenario, 1000)).toBeCloseTo(expectedTax, 2);
+    expect(calculateTaxEffect(scenario, -1000)).toBeCloseTo(-expectedTax, 2);
+  });
+
   it('should calculate progressive tax effect (higher income -> larger savings on loss)', () => {
     const lowIncomeScenario = createDefaultScenario({
       steuer: {

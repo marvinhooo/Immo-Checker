@@ -91,11 +91,11 @@ Allgemeine Arbeitsregeln:
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
 ## Handover Naechster Thread (Stand: 2026-06-20)
-- Implementiert und verifiziert: Stories 0 bis 13. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (112/112 Tests).
+- Implementiert und verifiziert: Stories 0 bis 13. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (118/118 Tests).
 - Offener Fokus: Keine offenen Stories.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
-  2. Naechster sinnvoller Fokus ist gezielter UX-/Fachreview mit realen Objektbeispielen oder optionales Code-Splitting wegen Vite Chunk-Size-Hinweis.
+  2. Naechster sinnvoller Fokus ist gezielter UX-/Fachreview mit realen Objektbeispielen.
 - Verify-Setup: `cd app && npm run lint && npm run typecheck && npm run build && npm run test`.
 
 ## Story-Status-Uebersicht (Stand: 2026-06-20)

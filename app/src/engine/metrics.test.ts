@@ -146,6 +146,58 @@ describe('Metrics Engine', () => {
       expect(runProjection(testScenario, 1).years[0].cashflowNachSteuer).toBeCloseTo(0, 1);
     });
 
+    it('returns 0 rent when zero rent is already break-even', () => {
+      const scenario = createDefaultScenario({
+        knk: {
+          grestPct: 0,
+          notarPct: 0,
+          maklerPct: 0,
+          mitfinanzieren: false,
+        },
+        finanzierung: {
+          equityMode: 'percent',
+          equityPct: 100,
+          equityAbsolute: 0,
+          sollzinsPct: 0,
+          tilgungPct: 0,
+          zinsbindungJahre: 10,
+          anschlusszinsPct: 0,
+          sondertilgungProJahr: 0,
+          disagioPct: 0,
+        },
+        miete: {
+          rentMode: 'perMonth',
+          kaltmieteProMonat: 0,
+          kaltmieteProSqm: 0,
+          leerstandPct: 0,
+          steigerungen: [],
+        },
+        kosten: {
+          maintenanceMode: 'absolute',
+          instandhaltungProSqm: 0,
+          instandhaltungPctRent: 0,
+          instandhaltungAbsolut: 0,
+          verwaltungProJahr: 0,
+          sonstigeKostenProJahr: 0,
+          kostensteigerungPctPa: 0,
+        },
+        steuer: {
+          taxMode: 'marginalRate',
+          bruttoJahresEinkommen: 0,
+          grenzsteuersatzPct: 0,
+          veranlagung: 'single',
+          soli: false,
+          kirchensteuerPct: 0,
+        },
+        afa: {
+          modus: 'linear',
+          linearSatzPct: 0,
+        },
+      });
+
+      expect(findBreakEvenRent(scenario)).toBe(0);
+    });
+
     it('verifies that the break-even interest rate yields a year-1 cashflow near 0', () => {
       const scenario = createDefaultScenario();
       const breakEvenRate = findBreakEvenInterestRate(scenario);
@@ -174,6 +226,58 @@ describe('Metrics Engine', () => {
           anschlusszinsPct: 4.5,
           sondertilgungProJahr: 0,
           disagioPct: 0,
+        },
+      });
+
+      expect(findBreakEvenInterestRate(scenario)).toBe(0);
+    });
+
+    it('returns 0 interest when 0% is already break-even', () => {
+      const scenario = createDefaultScenario({
+        knk: {
+          grestPct: 0,
+          notarPct: 0,
+          maklerPct: 0,
+          mitfinanzieren: true,
+        },
+        finanzierung: {
+          equityMode: 'percent',
+          equityPct: 0,
+          equityAbsolute: 0,
+          sollzinsPct: 0,
+          tilgungPct: 0,
+          zinsbindungJahre: 10,
+          anschlusszinsPct: 0,
+          sondertilgungProJahr: 0,
+          disagioPct: 0,
+        },
+        miete: {
+          rentMode: 'perMonth',
+          kaltmieteProMonat: 0,
+          kaltmieteProSqm: 0,
+          leerstandPct: 0,
+          steigerungen: [],
+        },
+        kosten: {
+          maintenanceMode: 'absolute',
+          instandhaltungProSqm: 0,
+          instandhaltungPctRent: 0,
+          instandhaltungAbsolut: 0,
+          verwaltungProJahr: 0,
+          sonstigeKostenProJahr: 0,
+          kostensteigerungPctPa: 0,
+        },
+        steuer: {
+          taxMode: 'marginalRate',
+          bruttoJahresEinkommen: 0,
+          grenzsteuersatzPct: 0,
+          veranlagung: 'single',
+          soli: false,
+          kirchensteuerPct: 0,
+        },
+        afa: {
+          modus: 'linear',
+          linearSatzPct: 0,
         },
       });
 

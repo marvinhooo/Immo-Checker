@@ -34,7 +34,7 @@ export function projectAfa(scenario: Scenario, years: number): AfaYearProjection
   // State for degressive to linear switch
   let hasSwitchedToLinear = false;
   let linearAfaRateAfterSwitch = 0;
-  const totalLifetime = scenario.afa.linearSatzPct > 0 ? 100 / scenario.afa.linearSatzPct : 50;
+  const totalLifetime = scenario.afa.linearSatzPct > 0 ? 100 / scenario.afa.linearSatzPct : Number.POSITIVE_INFINITY;
 
   for (let t = 1; t <= years; t++) {
     let afaAmount = 0;

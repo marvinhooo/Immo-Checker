@@ -61,6 +61,16 @@ export function calculateTotalTax(
   return est + soli + kist;
 }
 
+export function applyFlatTaxSurcharges(
+  baseIncomeTaxAmount: number,
+  useSoli: boolean,
+  kirchensteuerPct: number
+): number {
+  const soli = useSoli ? baseIncomeTaxAmount * 0.055 : 0;
+  const kist = (kirchensteuerPct / 100) * baseIncomeTaxAmount;
+  return baseIncomeTaxAmount + soli + kist;
+}
+
 /**
  * Calculates the marginal tax rate (Grenzsteuersatz) in percent at a given zvE level.
  * Uses numerical differentiation for accuracy across the piecewise tariff.
@@ -89,7 +99,11 @@ export function calculateTaxEffect(scenario: Scenario, vvResult: number): number
 
   if (taxMode === 'marginalRate') {
     // Fixed marginal rate mode (fester Grenzsteuersatz)
-    return (grenzsteuersatzPct / 100) * vvResult;
+    return applyFlatTaxSurcharges(
+      (grenzsteuersatzPct / 100) * vvResult,
+      soli,
+      kirchensteuerPct
+    );
   }
 
   // Progressive tax mode based on § 32a EStG 2026

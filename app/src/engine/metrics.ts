@@ -139,12 +139,16 @@ export function findBreakEvenRent(scenario: Scenario): number {
   let fLow = getCashflowForRent(low);
   let fHigh = getCashflowForRent(high);
 
+  if (Math.abs(fLow) < 0.01) return low;
+
   let expansions = 0;
   while (fLow * fHigh > 0 && fLow < 0 && fHigh < 0 && expansions < 30) {
     high *= 2;
     fHigh = getCashflowForRent(high);
     expansions++;
   }
+
+  if (Math.abs(fHigh) < 0.01) return high;
 
   if (fLow * fHigh > 0) {
     return 0;
@@ -191,6 +195,9 @@ export function findBreakEvenInterestRate(scenario: Scenario): number {
 
   let fLow = getCashflowForInterest(low);
   const fHigh = getCashflowForInterest(high);
+
+  if (Math.abs(fLow) < 0.01) return low;
+  if (Math.abs(fHigh) < 0.01) return high;
 
   if (fLow * fHigh > 0) {
     return fLow < 0 ? 0 : 100;

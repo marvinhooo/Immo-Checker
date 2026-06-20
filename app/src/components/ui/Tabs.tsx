@@ -18,7 +18,7 @@ export function Tabs({
   className = '',
 }: TabsProps) {
   return (
-    <div className={`flex rounded-xl bg-slate-100 p-1 ${className}`}>
+    <div className={`flex rounded-xl bg-slate-100 p-1 overflow-x-auto scrollbar-none ${className}`}>
       {tabs.map((tab) => {
         const isActive = tab.id === activeTab;
         return (
@@ -26,7 +26,7 @@ export function Tabs({
             key={tab.id}
             type="button"
             onClick={() => onChange(tab.id)}
-            className={`flex-1 rounded-lg py-2 text-center text-xs font-semibold tracking-wide transition-all duration-200 ${
+            className={`shrink-0 rounded-lg py-2 px-3 text-center text-xs font-semibold tracking-wide transition-all duration-200 whitespace-nowrap ${
               isActive
                 ? 'bg-white text-slate-800 shadow-xs'
                 : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50/50'

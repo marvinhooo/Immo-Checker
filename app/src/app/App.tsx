@@ -621,24 +621,20 @@ export function App() {
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8 space-y-6">
         
         {/* Scenario Toolbar */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4 no-print">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Aktives Szenario:</span>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-slate-800 text-sm">{active.name}</span>
+        <div className="rounded-xl border border-slate-200 bg-white shadow-2xs no-print">
+          {/* Row 1: Scenario name + selector */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 border-b border-slate-100">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 shrink-0">Szenario:</span>
+              <span className="font-extrabold text-slate-800 text-sm truncate">{active.name}</span>
               <button
                 onClick={handleRename}
-                className="text-[11px] text-slate-500 hover:text-slate-800 underline font-semibold transition cursor-pointer"
+                className="text-[11px] text-slate-500 hover:text-slate-800 underline font-semibold transition cursor-pointer shrink-0"
               >
                 Umbenennen
               </button>
             </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Scenario Selector */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-slate-500">Wechseln zu:</span>
+            <div className="flex items-center gap-2">
               <select
                 value={active.id}
                 onChange={(e) => {
@@ -649,7 +645,7 @@ export function App() {
                     loadSaved(val);
                   }
                 }}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-blue-500 cursor-pointer"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-blue-500 cursor-pointer min-w-0"
               >
                 <option value={active.id}>{active.name} (Aktuell)</option>
                 {saved.filter(s => s.id !== active.id).map(s => (
@@ -657,30 +653,30 @@ export function App() {
                 ))}
                 <option value="new">+ Neues Szenario anlegen</option>
               </select>
+              <button
+                onClick={handleSave}
+                className="rounded-lg bg-blue-600 hover:bg-blue-700 px-3.5 py-1.5 text-xs font-bold text-white transition cursor-pointer shadow-2xs shrink-0"
+              >
+                Speichern
+              </button>
             </div>
-
-            <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
-
-            <button
-              onClick={handleSave}
-              className="rounded-lg bg-blue-600 hover:bg-blue-700 px-3.5 py-1.5 text-xs font-bold text-white transition cursor-pointer shadow-2xs"
-            >
-              Speichern
-            </button>
+          </div>
+          {/* Row 2: Actions */}
+          <div className="flex flex-wrap items-center gap-1.5 px-4 py-2.5">
             <button
               onClick={handleDuplicate}
-              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
             >
               Duplizieren
             </button>
             <button
               onClick={handleDelete}
-              className="rounded-lg border border-rose-100 bg-rose-50/50 hover:bg-rose-50 px-3.5 py-1.5 text-xs font-bold text-rose-700 transition cursor-pointer"
+              className="rounded-lg border border-rose-100 bg-rose-50/50 hover:bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 transition cursor-pointer"
             >
               Löschen
             </button>
 
-            <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
+            <div className="h-4 w-[1px] bg-slate-200 mx-0.5"></div>
 
             <input
               type="file"
@@ -691,40 +687,40 @@ export function App() {
             />
             <button
               onClick={handleImportClick}
-              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
               title="Szenario(s) aus JSON-Datei importieren"
             >
-              JSON Import
+              Import
             </button>
             <button
               onClick={handleExportJSON}
-              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
               title="Aktuelles Szenario als JSON-Datei exportieren"
             >
-              JSON Export
+              Export
             </button>
             {saved.length > 0 && (
               <button
                 onClick={handleExportAllJSON}
-                className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+                className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
                 title="Alle gespeicherten Szenarien als JSON-Bulk exportieren"
               >
                 Alle exportieren
               </button>
             )}
 
-            <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
+            <div className="h-4 w-[1px] bg-slate-200 mx-0.5"></div>
 
             <button
               onClick={handleExportCSV}
-              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
               title="Jahrestabelle als CSV (Excel-kompatibel) exportieren"
             >
-              CSV Export
+              CSV
             </button>
             <button
               onClick={handlePrintPDF}
-              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
               title="Ergebnisse als PDF drucken / speichern"
             >
               PDF drucken
@@ -744,7 +740,14 @@ export function App() {
                 onClick={() => toggleSection('objekt')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <span>1. Objekt & Kaufpreis</span>
+                <div className="flex flex-col">
+                  <span>1. Objekt & Kaufpreis</span>
+                  {openSection !== 'objekt' && active.objekt.kaufpreis > 0 && (
+                    <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      {formatEUR(active.objekt.kaufpreis)} · {formatNumber(active.objekt.wohnflaeche, 0)} m² · {active.objekt.fertigstellungsjahr}
+                    </span>
+                  )}
+                </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'objekt' ? 'rotate-180' : ''}`}>
                   ▼
                 </span>
@@ -843,7 +846,14 @@ export function App() {
                 onClick={() => toggleSection('knk')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <span>2. Kaufnebenkosten (KNK)</span>
+                <div className="flex flex-col">
+                  <span>2. Kaufnebenkosten (KNK)</span>
+                  {openSection !== 'knk' && (
+                    <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      {formatEUR(knkAmount(active))} ({formatPercent(active.knk.grestPct + active.knk.notarPct + active.knk.maklerPct, 2)})
+                    </span>
+                  )}
+                </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'knk' ? 'rotate-180' : ''}`}>
                   ▼
                 </span>
@@ -914,7 +924,14 @@ export function App() {
                 onClick={() => toggleSection('finanzierung')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <span>3. Finanzierung</span>
+                <div className="flex flex-col">
+                  <span>3. Finanzierung</span>
+                  {openSection !== 'finanzierung' && (
+                    <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      {formatEUR(loanAmount(active))} · {formatPercent(active.finanzierung.sollzinsPct)} Zins · {formatPercent(active.finanzierung.tilgungPct)} Tilgung
+                    </span>
+                  )}
+                </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'finanzierung' ? 'rotate-180' : ''}`}>
                   ▼
                 </span>
@@ -1048,7 +1065,17 @@ export function App() {
                 onClick={() => toggleSection('miete')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <span>4. Miete</span>
+                <div className="flex flex-col">
+                  <span>4. Miete</span>
+                  {openSection !== 'miete' && (
+                    <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      {active.miete.rentMode === 'perMonth'
+                        ? `${formatEUR(active.miete.kaltmieteProMonat)}/Monat`
+                        : `${formatNumber(active.miete.kaltmieteProSqm, 2)} €/m²`}
+                      {' · '}{formatPercent(active.miete.leerstandPct)} Leerstand
+                    </span>
+                  )}
+                </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'miete' ? 'rotate-180' : ''}`}>
                   ▼
                 </span>
@@ -1224,7 +1251,14 @@ export function App() {
                 onClick={() => toggleSection('kosten')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <span>5. Laufende Kosten</span>
+                <div className="flex flex-col">
+                  <span>5. Laufende Kosten</span>
+                  {openSection !== 'kosten' && (
+                    <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      {formatEUR(active.kosten.verwaltungProJahr)}/Jahr Verwaltung
+                    </span>
+                  )}
+                </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'kosten' ? 'rotate-180' : ''}`}>
                   ▼
                 </span>
@@ -1305,7 +1339,17 @@ export function App() {
                 onClick={() => toggleSection('steuer')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <span>6. Steuer</span>
+                <div className="flex flex-col">
+                  <span>6. Steuer</span>
+                  {openSection !== 'steuer' && (
+                    <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      {active.steuer.taxMode === 'income'
+                        ? `${formatEUR(active.steuer.bruttoJahresEinkommen)} Einkommen`
+                        : `${formatPercent(active.steuer.grenzsteuersatzPct)} Grenzsteuersatz`}
+                      {' · '}{active.steuer.veranlagung === 'splitting' ? 'Splitting' : 'Einzel'}
+                    </span>
+                  )}
+                </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'steuer' ? 'rotate-180' : ''}`}>
                   ▼
                 </span>
@@ -1392,7 +1436,14 @@ export function App() {
                 onClick={() => toggleSection('afa')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <span>7. Abschreibung (AfA)</span>
+                <div className="flex flex-col">
+                  <span>7. Abschreibung (AfA)</span>
+                  {openSection !== 'afa' && (
+                    <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      {active.afa.modus === 'linear' ? `Linear ${formatPercent(active.afa.linearSatzPct)}` : active.afa.modus === 'degressiv' ? 'Degressiv 5 %' : active.afa.modus === 'denkmal7i' ? 'Denkmal §7i' : 'Sonder §7b'}
+                    </span>
+                  )}
+                </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'afa' ? 'rotate-180' : ''}`}>
                   ▼
                 </span>
@@ -1467,7 +1518,14 @@ export function App() {
                 onClick={() => toggleSection('wertentwicklung')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <span>8. Wertentwicklung</span>
+                <div className="flex flex-col">
+                  <span>8. Wertentwicklung</span>
+                  {openSection !== 'wertentwicklung' && active.wertentwicklung.szenario.length > 0 && (
+                    <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      {active.wertentwicklung.szenario.map(r => r.kind === 'rate' ? `${formatPercent(r.percentPerYear)}/Jahr` : `${formatPercent(r.percent)} Sprung`).join(', ')}
+                    </span>
+                  )}
+                </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'wertentwicklung' ? 'rotate-180' : ''}`}>
                   ▼
                 </span>
@@ -1601,7 +1659,14 @@ export function App() {
                 onClick={() => toggleSection('exit')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <span>9. Verkauf (Exit)</span>
+                <div className="flex flex-col">
+                  <span>9. Verkauf (Exit)</span>
+                  {openSection !== 'exit' && (
+                    <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      {active.exit.haltedauerJahre} Jahre Haltedauer
+                    </span>
+                  )}
+                </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'exit' ? 'rotate-180' : ''}`}>
                   ▼
                 </span>
@@ -1666,66 +1731,99 @@ export function App() {
 
             {/* KPI Metrics Panel */}
             <Card>
-              <CardContent className="pt-5 divide-y divide-slate-100">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 pb-3">Kennzahlen (Jahr 1)</h3>
-                {[
-                  {
-                    label: 'Cashflow nach Steuern pro Monat',
-                    value: formatEUR(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0),
-                    color: (proj.years[0]?.cashflowNachSteuerMonatlich ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700',
-                    desc: 'Monatlicher Überschuss bzw. Zuzahlungsbedarf im ersten Jahr nach Steuern',
-                  },
-                  {
-                    label: 'Cashflow vor Steuern pro Monat',
-                    value: formatEUR(proj.years[0]?.cashflowVorSteuerMonatlich ?? 0),
-                    color: (proj.years[0]?.cashflowVorSteuerMonatlich ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700',
-                    desc: 'Monatlicher Überschuss bzw. Zuzahlungsbedarf im ersten Jahr vor Steuern',
-                  },
-                  {
-                    label: 'Eigenkapitalrendite (IRR) p. a.',
-                    value: formatPercent(metrics.irr),
-                    color: metrics.rating === 'green' ? 'text-emerald-700' : metrics.rating === 'red' ? 'text-rose-700' : 'text-amber-600',
-                    desc: 'Interner Zinsfuß der Eigenkapital-Cashflows inkl. Verkauf über die gesamte Haltedauer',
-                  },
-                  {
-                    label: 'Netto-Mietrendite',
-                    value: formatPercent(metrics.nettomietrendite),
-                    color: metrics.nettomietrendite >= 3.5 ? 'text-emerald-700' : 'text-slate-700',
-                    desc: 'Jahresnettomiete abzüglich Bewirtschaftungskosten, geteilt durch die Gesamterwerbskosten',
-                  },
-                  {
-                    label: 'Brutto-Mietrendite',
-                    value: formatPercent(metrics.bruttomietrendite),
-                    color: 'text-slate-700',
-                    desc: 'Jahreskaltmiete geteilt durch den reinen Kaufpreis',
-                  },
-                  {
-                    label: 'Kaufpreisfaktor',
-                    value: `${formatNumber(metrics.kaufpreisfaktor, 1)}x`,
-                    color: 'text-slate-700',
-                    desc: 'Kaufpreis geteilt durch die Jahreskaltmiete — wie viele Jahresmieten kostet die Immobilie',
-                  },
-                  {
-                    label: `Nettovermögen (nach ${active.exit.haltedauerJahre} Jahren)`,
-                    value: formatEUR(proj.years[proj.years.length - 1]?.eigenkapital ?? 0),
-                    color: 'text-blue-700',
-                    desc: 'Immobilienwert abzüglich Restschuld am Ende der Haltedauer',
-                  },
-                  {
-                    label: 'Durchschnittliche Cash-on-Cash Rendite p. a.',
-                    value: formatPercent(metrics.cocAverage),
-                    color: metrics.cocAverage >= 4.0 ? 'text-emerald-700' : 'text-slate-700',
-                    desc: 'Durchschnittlicher jährlicher Cashflow nach Steuern im Verhältnis zum eingesetzten Eigenkapital',
-                  },
-                ].map((kpi) => (
-                  <div key={kpi.label} className="flex items-baseline justify-between py-3">
-                    <div className="pr-4">
-                      <div className="text-sm font-semibold text-slate-700">{kpi.label}</div>
-                      <div className="text-xs text-slate-400 mt-0.5">{kpi.desc}</div>
+              <CardContent className="pt-5 space-y-1">
+                {/* Cashflow */}
+                <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pb-1">Cashflow (Jahr 1)</h3>
+                <div className="divide-y divide-slate-100">
+                  {[
+                    {
+                      label: 'Cashflow nach Steuern / Monat',
+                      value: formatEUR(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0),
+                      color: (proj.years[0]?.cashflowNachSteuerMonatlich ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700',
+                      desc: 'Monatlicher Überschuss bzw. Zuzahlungsbedarf nach Steuern',
+                    },
+                    {
+                      label: 'Cashflow vor Steuern / Monat',
+                      value: formatEUR(proj.years[0]?.cashflowVorSteuerMonatlich ?? 0),
+                      color: (proj.years[0]?.cashflowVorSteuerMonatlich ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700',
+                      desc: 'Monatlicher Überschuss bzw. Zuzahlungsbedarf vor Steuern',
+                    },
+                  ].map((kpi) => (
+                    <div key={kpi.label} className="flex items-baseline justify-between py-2.5">
+                      <div className="pr-4">
+                        <div className="text-sm font-semibold text-slate-700">{kpi.label}</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">{kpi.desc}</div>
+                      </div>
+                      <span className={`text-base font-extrabold tabular-nums whitespace-nowrap ${kpi.color}`}>{kpi.value}</span>
                     </div>
-                    <span className={`text-base font-extrabold tabular-nums whitespace-nowrap ${kpi.color}`}>{kpi.value}</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
+
+                {/* Rendite */}
+                <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-3 pb-1">Rendite</h3>
+                <div className="divide-y divide-slate-100">
+                  {[
+                    {
+                      label: 'Eigenkapitalrendite (IRR) p. a.',
+                      value: formatPercent(metrics.irr),
+                      color: metrics.rating === 'green' ? 'text-emerald-700' : metrics.rating === 'red' ? 'text-rose-700' : 'text-amber-600',
+                      desc: 'Interner Zinsfuß inkl. Verkauf über die gesamte Haltedauer',
+                    },
+                    {
+                      label: 'Netto-Mietrendite',
+                      value: formatPercent(metrics.nettomietrendite),
+                      color: metrics.nettomietrendite >= 3.5 ? 'text-emerald-700' : 'text-slate-700',
+                      desc: 'Jahresnettomiete abzgl. Bewirtschaftungskosten / Gesamterwerbskosten',
+                    },
+                    {
+                      label: 'Brutto-Mietrendite',
+                      value: formatPercent(metrics.bruttomietrendite),
+                      color: 'text-slate-700',
+                      desc: 'Jahreskaltmiete / Kaufpreis',
+                    },
+                    {
+                      label: 'Cash-on-Cash Rendite p. a. (Ø)',
+                      value: formatPercent(metrics.cocAverage),
+                      color: metrics.cocAverage >= 4.0 ? 'text-emerald-700' : 'text-slate-700',
+                      desc: 'Ø jährlicher Cashflow nach Steuern / eingesetztes Eigenkapital',
+                    },
+                  ].map((kpi) => (
+                    <div key={kpi.label} className="flex items-baseline justify-between py-2.5">
+                      <div className="pr-4">
+                        <div className="text-sm font-semibold text-slate-700">{kpi.label}</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">{kpi.desc}</div>
+                      </div>
+                      <span className={`text-base font-extrabold tabular-nums whitespace-nowrap ${kpi.color}`}>{kpi.value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Bewertung & Vermögen */}
+                <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-3 pb-1">Bewertung & Vermögen</h3>
+                <div className="divide-y divide-slate-100">
+                  {[
+                    {
+                      label: 'Kaufpreisfaktor',
+                      value: `${formatNumber(metrics.kaufpreisfaktor, 1)}x`,
+                      color: 'text-slate-700',
+                      desc: 'Kaufpreis / Jahreskaltmiete',
+                    },
+                    {
+                      label: `Nettovermögen (nach ${active.exit.haltedauerJahre} J.)`,
+                      value: formatEUR(proj.years[proj.years.length - 1]?.eigenkapital ?? 0),
+                      color: 'text-blue-700',
+                      desc: 'Immobilienwert abzüglich Restschuld am Ende der Haltedauer',
+                    },
+                  ].map((kpi) => (
+                    <div key={kpi.label} className="flex items-baseline justify-between py-2.5">
+                      <div className="pr-4">
+                        <div className="text-sm font-semibold text-slate-700">{kpi.label}</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">{kpi.desc}</div>
+                      </div>
+                      <span className={`text-base font-extrabold tabular-nums whitespace-nowrap ${kpi.color}`}>{kpi.value}</span>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
 

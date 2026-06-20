@@ -119,6 +119,36 @@ describe('scenarioStore', () => {
     expect(saved[0].id).toBe('duplicate-saved');
     expect(saved[0].name).toBe('First');
   });
+
+  it('hydrates legacy scenarios without Anschlusstilgung using the default fallback', async () => {
+    const active = createDefaultScenario();
+    const saved = createDefaultScenario();
+    saved.id = 'legacy-saved';
+    saved.name = 'Legacy Saved';
+
+    const activeFinanzierung = active.finanzierung as Partial<typeof active.finanzierung>;
+    const savedFinanzierung = saved.finanzierung as Partial<typeof saved.finanzierung>;
+    delete activeFinanzierung.anschlussTilgungPct;
+    delete savedFinanzierung.anschlussTilgungPct;
+
+    localStorage.setItem(
+      'immo-checker-store',
+      JSON.stringify({
+        state: {
+          active,
+          saved: [saved],
+        },
+        version: 1,
+      })
+    );
+
+    await useScenarioStore.persist.rehydrate();
+
+    const state = useScenarioStore.getState();
+    expect(state.active.finanzierung.anschlussTilgungPct).toBeNull();
+    expect(state.saved).toHaveLength(1);
+    expect(state.saved[0].finanzierung.anschlussTilgungPct).toBeNull();
+  });
 });
 
 describe('derive helpers', () => {

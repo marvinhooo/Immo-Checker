@@ -138,6 +138,49 @@ describe('io', () => {
     );
   });
 
+  it('should import old scenarios without Anschlusstilgung as the legacy default', () => {
+    const sc = createDefaultScenario();
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const finanzierung = parsed.finanzierung as Record<string, unknown>;
+    delete finanzierung.anschlussTilgungPct;
+
+    const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
+
+    expect(imported.finanzierung.anschlussTilgungPct).toBeNull();
+  });
+
+  it('should preserve and validate configured Anschlusstilgung on import', () => {
+    const sc = createDefaultScenario({
+      finanzierung: {
+        equityMode: 'percent',
+        equityPct: 20,
+        equityAbsolute: 0,
+        sollzinsPct: 3.8,
+        tilgungPct: 2,
+        zinsbindungJahre: 10,
+        anschlusszinsPct: 4.5,
+        anschlussTilgungPct: 3.5,
+        sondertilgungProJahr: 0,
+        disagioPct: 0,
+      },
+    });
+
+    const imported = importScenarios(exportScenario(sc)) as Scenario;
+
+    expect(imported.finanzierung.anschlussTilgungPct).toBe(3.5);
+  });
+
+  it('should reject imported Anschlusstilgung outside hard domain bounds', () => {
+    const sc = createDefaultScenario();
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const finanzierung = parsed.finanzierung as Record<string, unknown>;
+    finanzierung.anschlussTilgungPct = 101;
+
+    expect(() => importScenarios(JSON.stringify(parsed))).toThrow(
+      'anschlussTilgungPct muss eine Zahl zwischen 0 und 100 sein.'
+    );
+  });
+
   it('should generate valid German CSV format from projection years', () => {
     const years: ProjectionYear[] = [
       {

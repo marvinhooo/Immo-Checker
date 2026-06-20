@@ -119,6 +119,42 @@ describe('Projection Engine', () => {
     expect(result.loanAmount).toBeCloseTo(300000, 2);
   });
 
+  it('passes configured Anschlusstilgung into the amortization projection', () => {
+    const base = createDefaultScenario({
+      finanzierung: {
+        equityMode: 'percent',
+        equityPct: 20,
+        equityAbsolute: 0,
+        sollzinsPct: 3.0,
+        tilgungPct: 2.0,
+        zinsbindungJahre: 5,
+        anschlusszinsPct: 3.0,
+        anschlussTilgungPct: null,
+        sondertilgungProJahr: 0,
+        disagioPct: 0,
+      },
+      exit: {
+        haltedauerJahre: 12,
+        verkaufsnebenkostenPct: 3,
+        vorfaelligkeitPct: 0,
+      },
+    });
+    const higher = createDefaultScenario({
+      ...base,
+      finanzierung: {
+        ...base.finanzierung,
+        anschlussTilgungPct: 4,
+      },
+    });
+
+    const baseProjection = runProjection(base);
+    const higherProjection = runProjection(higher);
+
+    expect(higherProjection.years[4].restschuld).toBeCloseTo(baseProjection.years[4].restschuld, 2);
+    expect(higherProjection.years[5].tilgung).toBeGreaterThan(baseProjection.years[5].tilgung);
+    expect(higherProjection.years[11].restschuld).toBeLessThan(baseProjection.years[11].restschuld);
+  });
+
   it('keeps equivalent financing economically consistent when EK exactly covers KNK', () => {
     const noEquityScenario = createDefaultScenario({
       finanzierung: {

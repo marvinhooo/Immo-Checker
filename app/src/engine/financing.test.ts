@@ -135,6 +135,53 @@ describe('buildAmortizationSchedule', () => {
     expect(result.laufzeitJahre).toBe(Number.POSITIVE_INFINITY);
   });
 
+  it('uses a configured Anschlusstilgung after the Zinsbindung', () => {
+    const sameTilgung = buildAmortizationSchedule({
+      loanAmount: 200000,
+      sollzinsPct: 3.0,
+      tilgungPct: 2.0,
+      zinsbindungJahre: 5,
+      anschlussTilgungPct: null,
+      anschlusszinsPct: 3.0,
+      sondertilgungProJahr: 0,
+      haltedauerJahre: 12,
+    });
+
+    const higherAnschlussTilgung = buildAmortizationSchedule({
+      loanAmount: 200000,
+      sollzinsPct: 3.0,
+      tilgungPct: 2.0,
+      zinsbindungJahre: 5,
+      anschlussTilgungPct: 4.0,
+      anschlusszinsPct: 3.0,
+      sondertilgungProJahr: 0,
+      haltedauerJahre: 12,
+    });
+
+    expect(higherAnschlussTilgung.years[4].endbestand).toBeCloseTo(sameTilgung.years[4].endbestand, 2);
+    expect(higherAnschlussTilgung.years[5].tilgung).toBeGreaterThan(sameTilgung.years[5].tilgung);
+    expect(higherAnschlussTilgung.years[11].endbestand).toBeLessThan(sameTilgung.years[11].endbestand);
+    expect(higherAnschlussTilgung.laufzeitMonate).toBeLessThan(sameTilgung.laufzeitMonate);
+  });
+
+  it('starts amortizing after the Zinsbindung when only Anschlusstilgung is set', () => {
+    const result = buildAmortizationSchedule({
+      loanAmount: 100000,
+      sollzinsPct: 3.0,
+      tilgungPct: 0,
+      zinsbindungJahre: 3,
+      anschlussTilgungPct: 3.0,
+      anschlusszinsPct: 4.0,
+      sondertilgungProJahr: 0,
+      haltedauerJahre: 6,
+    });
+
+    expect(result.years[2].endbestand).toBeCloseTo(100000, 2);
+    expect(result.years[3].tilgung).toBeGreaterThan(0);
+    expect(result.years[5].endbestand).toBeLessThan(100000);
+    expect(result.laufzeitMonate).not.toBe(Number.POSITIVE_INFINITY);
+  });
+
   it('sets the loan term when Sondertilgung fully repays at year-end', () => {
     const result = buildAmortizationSchedule({
       loanAmount: 5000,

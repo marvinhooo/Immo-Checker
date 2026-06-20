@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.*
+*.local
+.DS_Store
+.claude
+activity.md
+activity_template.md
+memory.md
+memory_template.md
+PRD_template.md

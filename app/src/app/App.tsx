@@ -42,6 +42,7 @@ import { BUNDESLAND_LABELS, GREST_BY_BUNDESLAND } from '../engine/constants';
 import type { Bundesland, ObjektTyp, AfaModus, EquityMode, RentMode, MaintenanceMode, TaxMode, Veranlagung, IncreaseRule } from '../engine/types';
 import { marginalRate } from '../engine/tax';
 import { projectSeries } from '../engine/timeline';
+import { createDefaultScenario } from '../engine/defaults';
 
 // Recharts components for visualisations
 import {
@@ -397,6 +398,52 @@ export function App() {
     }));
   }, [proj]);
 
+  const handleNewScenario = () => {
+    const name = prompt('Name für das neue Szenario:');
+    if (!name || !name.trim()) return;
+    const fresh = createDefaultScenario({
+      name: name.trim(),
+      objekt: {
+        kaufpreis: 0,
+        wohnflaeche: 0,
+        fertigstellungsjahr: 2000,
+        bundesland: 'NW',
+        objektTyp: 'bestand',
+        bodenwertAnteilPct: 20,
+        sanierungskosten: 0,
+      },
+      finanzierung: {
+        equityMode: 'percent',
+        equityPct: 20,
+        equityAbsolute: 0,
+        sollzinsPct: 3.8,
+        tilgungPct: 2.0,
+        zinsbindungJahre: 10,
+        anschlusszinsPct: 4.5,
+        sondertilgungProJahr: 0,
+        disagioPct: 0,
+      },
+      miete: {
+        rentMode: 'perMonth',
+        kaltmieteProMonat: 0,
+        kaltmieteProSqm: 0,
+        leerstandPct: 3,
+        steigerungen: [
+          { id: crypto.randomUUID(), kind: 'rate', fromYear: 1, percentPerYear: 1.5 },
+        ],
+      },
+      steuer: {
+        taxMode: 'income',
+        bruttoJahresEinkommen: 0,
+        grenzsteuersatzPct: 42,
+        veranlagung: 'single',
+        soli: false,
+        kirchensteuerPct: 0,
+      },
+    });
+    useScenarioStore.getState().setActive(fresh);
+  };
+
   const handleSave = () => {
     useScenarioStore.getState().saveCurrent();
     alert(`Szenario "${active.name}" gespeichert.`);
@@ -596,7 +643,7 @@ export function App() {
                 onChange={(e) => {
                   const val = e.target.value;
                   if (val === 'new') {
-                    resetActive();
+                    handleNewScenario();
                   } else {
                     loadSaved(val);
                   }
@@ -607,7 +654,7 @@ export function App() {
                 {saved.filter(s => s.id !== active.id).map(s => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
-                <option value="new">+ Neues Standard-Szenario</option>
+                <option value="new">+ Neues Szenario anlegen</option>
               </select>
             </div>
 

@@ -54,6 +54,7 @@ export interface FinanzierungInput {
   tilgungPct: number; // anfaengliche Tilgung p. a.
   zinsbindungJahre: number;
   anschlusszinsPct: number; // Sollzins nach Ablauf der Zinsbindung
+  anschlussTilgungPct: number | null; // Tilgung nach Zinsbindung (null = wie anfaengliche Tilgung)
   sondertilgungProJahr: number; // EUR p. a.
   disagioPct: number; // optional, 0 = kein Disagio
 }

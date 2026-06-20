@@ -5,6 +5,7 @@ export interface AmortizationInput {
   tilgungPct: number;
   zinsbindungJahre: number;
   anschlusszinsPct: number;
+  anschlussTilgungPct: number | null;
   sondertilgungProJahr: number;
   haltedauerJahre: number;
 }
@@ -39,6 +40,7 @@ export function buildAmortizationSchedule(input: AmortizationInput): Amortizatio
     tilgungPct,
     zinsbindungJahre,
     anschlusszinsPct,
+    anschlussTilgungPct,
     sondertilgungProJahr,
     haltedauerJahre,
   } = input;
@@ -93,9 +95,8 @@ export function buildAmortizationSchedule(input: AmortizationInput): Amortizatio
 
     // Recalculate annuity at the beginning of post-zinsbindung period
     if (currentMonth === zinsbindungJahre * 12 + 1) {
-      // Design Decision: New annuity is based on the remaining debt at the end of the Zinsbindung
-      // and uses the new interest rate and original amortization rate.
-      monthlyAnnuity = (currentDebt * (activeRatePct + tilgungPct)) / 100 / 12;
+      const effectiveTilgung = anschlussTilgungPct ?? tilgungPct;
+      monthlyAnnuity = (currentDebt * (activeRatePct + effectiveTilgung)) / 100 / 12;
     }
 
     // Calculate monthly interest

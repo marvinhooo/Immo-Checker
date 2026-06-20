@@ -145,6 +145,11 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   requireNumberInRange(finanzierung, 'tilgungPct', 0, 100, prefix);
   requireIntegerInRange(finanzierung, 'zinsbindungJahre', 1, 30, prefix);
   requireNumberInRange(finanzierung, 'anschlusszinsPct', 0, 100, prefix);
+  if (finanzierung.anschlussTilgungPct === undefined || finanzierung.anschlussTilgungPct === null) {
+    finanzierung.anschlussTilgungPct = null;
+  } else {
+    requireNumberInRange(finanzierung, 'anschlussTilgungPct', 0, 100, prefix);
+  }
   requireNumberInRange(finanzierung, 'sondertilgungProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
   requireNumberInRange(finanzierung, 'disagioPct', 0, 99.999, prefix);
 

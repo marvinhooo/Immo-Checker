@@ -82,6 +82,7 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
     tilgungPct: scenario.finanzierung.tilgungPct,
     zinsbindungJahre: scenario.finanzierung.zinsbindungJahre,
     anschlusszinsPct: scenario.finanzierung.anschlusszinsPct,
+    anschlussTilgungPct: scenario.finanzierung.anschlussTilgungPct,
     sondertilgungProJahr: scenario.finanzierung.sondertilgungProJahr,
     haltedauerJahre: safeYears,
   };

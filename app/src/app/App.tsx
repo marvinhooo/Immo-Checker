@@ -420,6 +420,7 @@ export function App() {
         tilgungPct: 2.0,
         zinsbindungJahre: 10,
         anschlusszinsPct: 4.5,
+        anschlussTilgungPct: null,
         sondertilgungProJahr: 0,
         disagioPct: 0,
       },
@@ -987,6 +988,27 @@ export function App() {
                       step={0.1}
                       suffix="%"
                     />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Slider
+                      label={`Anschlusstilgung p. a.: ${active.finanzierung.anschlussTilgungPct !== null ? formatPercent(active.finanzierung.anschlussTilgungPct) : 'wie Anfangstilgung'}`}
+                      value={active.finanzierung.anschlussTilgungPct ?? active.finanzierung.tilgungPct}
+                      onChange={(val) => updateActive((d) => { d.finanzierung.anschlussTilgungPct = val; })}
+                      min={0}
+                      max={10}
+                      step={0.1}
+                      suffix="%"
+                    />
+                    <div className="flex items-end pb-1">
+                      {active.finanzierung.anschlussTilgungPct !== null && (
+                        <button
+                          onClick={() => updateActive((d) => { d.finanzierung.anschlussTilgungPct = null; })}
+                          className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+                        >
+                          Auf Anfangstilgung zurücksetzen
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <NumberInput

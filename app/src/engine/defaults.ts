@@ -45,6 +45,7 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
       tilgungPct: 2.0,
       zinsbindungJahre: 10,
       anschlusszinsPct: 4.5,
+      anschlussTilgungPct: null,
       sondertilgungProJahr: 0,
       disagioPct: 0,
     },

@@ -46,4 +46,29 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: 'react-vendor',
+              test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/,
+              priority: 3,
+            },
+            {
+              name: 'charts-vendor',
+              test: /node_modules[\\/](recharts|d3-|victory-vendor|decimal\.js-light|eventemitter3)[\\/]/,
+              priority: 2,
+            },
+            {
+              name: 'vendor',
+              test: /node_modules[\\/]/,
+              priority: 1,
+            },
+          ],
+        },
+      },
+    },
+  },
 });

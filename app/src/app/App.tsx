@@ -70,6 +70,16 @@ function clampTimelineYear(year: number): number {
   return Math.min(TIMELINE_RULE_MAX_YEAR, Math.max(TIMELINE_RULE_MIN_YEAR, Math.trunc(year)));
 }
 
+function clampTimelinePercent(percent: number): number {
+  if (!Number.isFinite(percent)) return 0;
+  return Math.min(100, Math.max(-100, percent));
+}
+
+function clampIntegerInRange(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
 export function App() {
   const active = useScenarioStore((s) => s.active);
   const saved = useScenarioStore((s) => s.saved);
@@ -121,18 +131,16 @@ export function App() {
         },
     [active, activeTab, proj.initialEquity]
   );
-  const sensProj = useMemo(() => {
+  const sensitivityResult = useMemo(() => {
     return runSensitivity(active, {
       sollzinsPct: sensSollzins !== null ? sensSollzins : undefined,
       leerstandPct: sensLeerstand !== null ? sensLeerstand : undefined,
       wertsteigerungPct: sensWert !== null ? sensWert : undefined,
       anschlusszinsPct: sensAnschluss !== null ? sensAnschluss : undefined,
-    }).projection;
+    });
   }, [active, sensSollzins, sensLeerstand, sensWert, sensAnschluss]);
-
-  const sensMetrics = useMemo(() => {
-    return calculateMetrics(active, sensProj);
-  }, [active, sensProj]);
+  const sensProj = sensitivityResult.projection;
+  const sensMetrics = sensitivityResult.metrics;
 
   const comparisonData = useMemo(() => {
     const list = [active, ...saved.filter(s => s.id !== active.id)];
@@ -208,7 +216,7 @@ export function App() {
             id,
             kind: 'step',
             fromYear: clampTimelineYear(updatedFields.fromYear ?? current.fromYear),
-            percent: percent ?? 1.0,
+            percent: clampTimelinePercent(percent ?? 1.0),
           };
         } else {
           const percentPerYear = 'percentPerYear' in updatedFields 
@@ -218,7 +226,7 @@ export function App() {
             id,
             kind: 'rate',
             fromYear: clampTimelineYear(updatedFields.fromYear ?? current.fromYear),
-            percentPerYear: percentPerYear ?? 1.0,
+            percentPerYear: clampTimelinePercent(percentPerYear ?? 1.0),
           };
         }
       }
@@ -258,7 +266,7 @@ export function App() {
             id,
             kind: 'step',
             fromYear: clampTimelineYear(updatedFields.fromYear ?? current.fromYear),
-            percent: percent ?? 1.0,
+            percent: clampTimelinePercent(percent ?? 1.0),
           };
         } else {
           const percentPerYear = 'percentPerYear' in updatedFields 
@@ -268,7 +276,7 @@ export function App() {
             id,
             kind: 'rate',
             fromYear: clampTimelineYear(updatedFields.fromYear ?? current.fromYear),
-            percentPerYear: percentPerYear ?? 1.0,
+            percentPerYear: clampTimelinePercent(percentPerYear ?? 1.0),
           };
         }
       }
@@ -309,8 +317,8 @@ export function App() {
   const valueBase = active.objekt.kaufpreis;
   
   const valueChartData = useMemo(() => {
-    const valueSeries = projectSeries(valueBase, active.wertentwicklung.szenario, active.exit.haltedauerJahre);
-    return valueSeries.map((val, idx) => ({
+    const valueSeries = projectSeries(valueBase, active.wertentwicklung.szenario, active.exit.haltedauerJahre + 1);
+    return valueSeries.slice(1).map((val, idx) => ({
       Jahr: idx + 1,
       Wert: Math.round(val),
     }));
@@ -477,7 +485,7 @@ export function App() {
         } else {
           const idx = currentSaved.findIndex((x) => x.id === imported.id);
           if (idx >= 0) {
-            if (confirm(`Ein Szenario mit dem Namen "${imported.name}" existiert bereits. Möchten Sie es überschreiben?`)) {
+            if (confirm(`Ein Szenario mit der ID "${imported.id}" existiert bereits. Möchten Sie es überschreiben?`)) {
               const nextSaved = [...currentSaved];
               nextSaved[idx] = imported;
               useScenarioStore.setState({ saved: nextSaved });
@@ -716,9 +724,10 @@ export function App() {
                       min={1}
                       max={2100}
                       onChange={(val) => updateActive((d) => {
-                        d.objekt.fertigstellungsjahr = val;
+                        const year = clampIntegerInRange(val, 1, 2100);
+                        d.objekt.fertigstellungsjahr = year;
                         if (d.afa.modus === 'linear') {
-                          d.afa.linearSatzPct = val >= 2023 ? 3.0 : val < 1925 ? 2.5 : 2.0;
+                          d.afa.linearSatzPct = year >= 2023 ? 3.0 : year < 1925 ? 2.5 : 2.0;
                         }
                       })}
                     />
@@ -1063,6 +1072,8 @@ export function App() {
                                 <div className="relative flex items-center">
                                   <input
                                     type="number"
+                                    min="-100"
+                                    max="100"
                                     step="0.1"
                                     value={rule.kind === 'rate' ? rule.percentPerYear : rule.percent}
                                     onChange={(e) => {
@@ -1438,6 +1449,8 @@ export function App() {
                                 <div className="relative flex items-center">
                                   <input
                                     type="number"
+                                    min="-100"
+                                    max="100"
                                     step="0.1"
                                     value={rule.kind === 'rate' ? rule.percentPerYear : rule.percent}
                                     onChange={(e) => {
@@ -1571,59 +1584,69 @@ export function App() {
               <>
 
             {/* KPI Metrics Panel */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <KPICard
-                label="Cashflow n. St. / Mo."
-                value={formatEUR(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0)}
-                trend={(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0) >= 0 ? 'positive' : 'negative'}
-                tooltip="Durchschnittlicher monatlicher Cashflow nach Steuern im ersten Jahr."
-              />
-              <KPICard
-                label="Cashflow v. St. / Mo."
-                value={formatEUR(proj.years[0]?.cashflowVorSteuerMonatlich ?? 0)}
-                trend={(proj.years[0]?.cashflowVorSteuerMonatlich ?? 0) >= 0 ? 'positive' : 'negative'}
-                tooltip="Durchschnittlicher monatlicher Cashflow vor Steuern im ersten Jahr."
-              />
-              <KPICard
-                label="Netto-Mietrendite"
-                value={formatPercent(metrics.nettomietrendite)}
-                trend={metrics.nettomietrendite >= 3.5 ? 'positive' : 'neutral'}
-                tooltip="Reingewinn vor Steuern geteilt durch die Gesamterwerbskosten."
-              />
-              <KPICard
-                label="IRR (Rendite)"
-                value={formatPercent(metrics.irr)}
-                trend={metrics.rating === 'green' ? 'positive' : metrics.rating === 'red' ? 'negative' : 'neutral'}
-                tooltip="Interner Zinsfuß (Rendite) der Eigenkapital-Cashflows inkl. Verkauf."
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <KPICard
-                label="Brutto-Mietrendite"
-                value={formatPercent(metrics.bruttomietrendite)}
-                trend="neutral"
-                tooltip="Jahreskaltmiete geteilt durch den reinen Kaufpreis."
-              />
-              <KPICard
-                label="Kaufpreisfaktor"
-                value={`${formatNumber(metrics.kaufpreisfaktor, 1)}x`}
-                trend="neutral"
-                tooltip="Reiner Kaufpreis geteilt durch die Jahreskaltmiete."
-              />
-              <KPICard
-                label="Nettovermögen"
-                value={formatEUR(proj.years[proj.years.length - 1]?.eigenkapital ?? 0)}
-                trend="positive"
-                tooltip="Immobilienwert abzüglich Restschuld am Ende der Haltedauer."
-              />
-              <KPICard
-                label="Eigenkapital-Rendite (ø)"
-                value={formatPercent(metrics.cocAverage)}
-                trend={metrics.cocAverage >= 4.0 ? 'positive' : 'neutral'}
-                tooltip="Durchschnittliche jährliche Cash-on-Cash Rendite."
-              />
-            </div>
+            <Card>
+              <CardContent className="pt-5 divide-y divide-slate-100">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 pb-3">Kennzahlen (Jahr 1)</h3>
+                {[
+                  {
+                    label: 'Cashflow nach Steuern pro Monat',
+                    value: formatEUR(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0),
+                    color: (proj.years[0]?.cashflowNachSteuerMonatlich ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700',
+                    desc: 'Monatlicher Überschuss bzw. Zuzahlungsbedarf im ersten Jahr nach Steuern',
+                  },
+                  {
+                    label: 'Cashflow vor Steuern pro Monat',
+                    value: formatEUR(proj.years[0]?.cashflowVorSteuerMonatlich ?? 0),
+                    color: (proj.years[0]?.cashflowVorSteuerMonatlich ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700',
+                    desc: 'Monatlicher Überschuss bzw. Zuzahlungsbedarf im ersten Jahr vor Steuern',
+                  },
+                  {
+                    label: 'Eigenkapitalrendite (IRR) p. a.',
+                    value: formatPercent(metrics.irr),
+                    color: metrics.rating === 'green' ? 'text-emerald-700' : metrics.rating === 'red' ? 'text-rose-700' : 'text-amber-600',
+                    desc: 'Interner Zinsfuß der Eigenkapital-Cashflows inkl. Verkauf über die gesamte Haltedauer',
+                  },
+                  {
+                    label: 'Netto-Mietrendite',
+                    value: formatPercent(metrics.nettomietrendite),
+                    color: metrics.nettomietrendite >= 3.5 ? 'text-emerald-700' : 'text-slate-700',
+                    desc: 'Jahresnettomiete abzüglich Bewirtschaftungskosten, geteilt durch die Gesamterwerbskosten',
+                  },
+                  {
+                    label: 'Brutto-Mietrendite',
+                    value: formatPercent(metrics.bruttomietrendite),
+                    color: 'text-slate-700',
+                    desc: 'Jahreskaltmiete geteilt durch den reinen Kaufpreis',
+                  },
+                  {
+                    label: 'Kaufpreisfaktor',
+                    value: `${formatNumber(metrics.kaufpreisfaktor, 1)}x`,
+                    color: 'text-slate-700',
+                    desc: 'Kaufpreis geteilt durch die Jahreskaltmiete — wie viele Jahresmieten kostet die Immobilie',
+                  },
+                  {
+                    label: `Nettovermögen (nach ${active.exit.haltedauerJahre} Jahren)`,
+                    value: formatEUR(proj.years[proj.years.length - 1]?.eigenkapital ?? 0),
+                    color: 'text-blue-700',
+                    desc: 'Immobilienwert abzüglich Restschuld am Ende der Haltedauer',
+                  },
+                  {
+                    label: 'Durchschnittliche Cash-on-Cash Rendite p. a.',
+                    value: formatPercent(metrics.cocAverage),
+                    color: metrics.cocAverage >= 4.0 ? 'text-emerald-700' : 'text-slate-700',
+                    desc: 'Durchschnittlicher jährlicher Cashflow nach Steuern im Verhältnis zum eingesetzten Eigenkapital',
+                  },
+                ].map((kpi) => (
+                  <div key={kpi.label} className="flex items-baseline justify-between py-3">
+                    <div className="pr-4">
+                      <div className="text-sm font-semibold text-slate-700">{kpi.label}</div>
+                      <div className="text-xs text-slate-400 mt-0.5">{kpi.desc}</div>
+                    </div>
+                    <span className={`text-base font-extrabold tabular-nums whitespace-nowrap ${kpi.color}`}>{kpi.value}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
 
             {/* Warnings Alert Box */}
             {warnings.length > 0 && (

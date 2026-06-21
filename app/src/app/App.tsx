@@ -1,9 +1,12 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { useScenarioStore } from '../store/scenarioStore';
+import { useScenarioStore, useSyncedSave, useSyncedDelete } from '../store/scenarioStore';
+import { useAuthStore } from '../store/authStore';
+import { AdminPanel } from '../components/admin/AdminPanel';
+import { pushScenarios } from '../lib/sync';
 import {
   knkAmount,
   totalInvest,
-  cashInvestment,
+  cashInvestmentBreakdown,
   unfinancedKnkCashGap,
   loanAmount,
 } from '../engine/derive';
@@ -86,6 +89,21 @@ export function App() {
   const updateActive = useScenarioStore((s) => s.updateActive);
   const resetActive = useScenarioStore((s) => s.resetActive);
   const loadSaved = useScenarioStore((s) => s.loadSaved);
+  const isSyncing = useScenarioStore((s) => s.isSyncing);
+  const loadFromCloud = useScenarioStore((s) => s.loadFromCloud);
+
+  const user = useAuthStore((s) => s.user);
+  const profile = useAuthStore((s) => s.profile);
+  const signOut = useAuthStore((s) => s.signOut);
+
+  const syncedSave = useSyncedSave(user?.id);
+  const syncedDelete = useSyncedDelete(user?.id);
+
+  const [showAdmin, setShowAdmin] = useState(false);
+
+  useEffect(() => {
+    if (user?.id) loadFromCloud(user.id);
+  }, [user?.id, loadFromCloud]);
 
   // UI state
   const [openSection, setOpenSection] = useState<string>('objekt');
@@ -111,6 +129,7 @@ export function App() {
 
   // Compute live calculations
   const proj = useMemo(() => runProjection(active), [active]);
+  const cashBreakdown = useMemo(() => cashInvestmentBreakdown(active), [active]);
   const currentSollzins = sensSollzins !== null ? sensSollzins : active.finanzierung.sollzinsPct;
   const currentLeerstand = sensLeerstand !== null ? sensLeerstand : active.miete.leerstandPct;
   const baseWertRule = active.wertentwicklung.szenario.find(r => r.kind === 'rate');
@@ -339,7 +358,7 @@ export function App() {
     }
     const knkGap = unfinancedKnkCashGap(active);
     if (knkGap > 0) {
-      list.push(`Das Eigenkapital deckt die nicht mitfinanzierten Kaufnebenkosten nicht vollständig. Es fehlen ${formatEUR(knkGap)} Barliquidität.`);
+      list.push(`Die nicht mitfinanzierten Kaufnebenkosten liegen ${formatEUR(knkGap)} über dem eingetragenen Eigenkapital. Die App unterstellt diesen Betrag als zusätzliche Barzahlung und rechnet ihn in den Kapitaleinsatz ein.`);
     }
     const maxLtv = Math.max(...proj.years.map(y => y.ltv));
     if (maxLtv > 100) {
@@ -445,8 +464,8 @@ export function App() {
     useScenarioStore.getState().setActive(fresh);
   };
 
-  const handleSave = () => {
-    useScenarioStore.getState().saveCurrent();
+  const handleSave = async () => {
+    await syncedSave();
     alert(`Szenario "${active.name}" gespeichert.`);
   };
 
@@ -455,9 +474,7 @@ export function App() {
       d.id = crypto.randomUUID();
       d.name = `${d.name} (Kopie)`;
     });
-    setTimeout(() => {
-      useScenarioStore.getState().saveCurrent();
-    }, 0);
+    setTimeout(() => { syncedSave(); }, 0);
   };
 
   const handleRename = () => {
@@ -466,19 +483,17 @@ export function App() {
       updateActive((d) => {
         d.name = newName.trim();
       });
-      setTimeout(() => {
-        useScenarioStore.getState().saveCurrent(newName.trim());
-      }, 0);
+      setTimeout(() => { syncedSave(newName.trim()); }, 0);
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (saved.length === 0) {
       alert('Es gibt keine gespeicherten Szenarien zum Löschen.');
       return;
     }
     if (confirm(`Möchten Sie das Szenario "${active.name}" wirklich löschen?`)) {
-      useScenarioStore.getState().deleteSaved(active.id);
+      await syncedDelete(active.id);
       const remaining = useScenarioStore.getState().saved;
       if (remaining.length > 0) {
         loadSaved(remaining[0].id);
@@ -527,6 +542,7 @@ export function App() {
             }
             useScenarioStore.setState({ saved: nextSaved });
             store.loadSaved(imported[0].id);
+            if (user?.id) pushScenarios(user.id, imported).catch(() => {});
             alert(`${imported.length} Szenarien erfolgreich importiert.`);
           }
         } else {
@@ -543,6 +559,7 @@ export function App() {
             useScenarioStore.setState({ saved: [...currentSaved, imported] });
           }
           store.setActive(imported);
+          if (user?.id) pushScenarios(user.id, [imported]).catch(() => {});
           alert(`Szenario "${imported.name}" erfolgreich importiert.`);
         }
       } catch (err) {
@@ -608,14 +625,40 @@ export function App() {
               Kapitalanlage-Rechner für private Anleger in Deutschland
             </p>
           </div>
-          <button
-            onClick={resetActive}
-            className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition duration-150 cursor-pointer shadow-2xs"
-          >
-            Zurücksetzen
-          </button>
+          <div className="flex items-center gap-2">
+            {isSyncing && (
+              <span className="text-[10px] font-medium text-blue-500 animate-pulse">Sync...</span>
+            )}
+            <span className="text-[11px] font-medium text-slate-400 hidden sm:inline truncate max-w-[160px]">
+              {user?.email}
+            </span>
+            {profile?.is_admin && (
+              <button
+                onClick={() => setShowAdmin(true)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer shadow-2xs"
+              >
+                Admin
+              </button>
+            )}
+            <button
+              onClick={resetActive}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer shadow-2xs"
+            >
+              Zurücksetzen
+            </button>
+            <button
+              onClick={signOut}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer shadow-2xs"
+            >
+              Abmelden
+            </button>
+          </div>
         </div>
       </header>
+
+      {showAdmin && profile?.is_admin && (
+        <AdminPanel onClose={() => setShowAdmin(false)} />
+      )}
 
       {/* Main Grid */}
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8 space-y-6">
@@ -1047,13 +1090,34 @@ export function App() {
                   </div>
                   <div className="rounded-xl bg-slate-50 p-3.5 text-xs text-slate-500 space-y-1 font-medium">
                     <div className="flex justify-between">
-                      <span>Eigenkapital benötigt:</span>
-                      <span className="font-bold text-slate-700">{formatEUR(cashInvestment(active))}</span>
+                      <span>Eingetragenes Eigenkapital:</span>
+                      <span className="font-bold text-slate-700">{formatEUR(cashBreakdown.enteredEquity)}</span>
+                    </div>
+                    {!active.knk.mitfinanzieren && (
+                      <div className="flex justify-between gap-4">
+                        <span>Bar gezahlte Kaufnebenkosten:</span>
+                        <span className="font-bold text-slate-700 text-right">{formatEUR(cashBreakdown.unfinancedKnkCash)}</span>
+                      </div>
+                    )}
+                    {cashBreakdown.additionalCashForUnfinancedKnk > 0 && (
+                      <div className="flex justify-between gap-4 text-amber-700">
+                        <span>Zusätzlich angenommene Barzahlung:</span>
+                        <span className="font-bold text-right">{formatEUR(cashBreakdown.additionalCashForUnfinancedKnk)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between gap-4 border-t border-slate-200 pt-1.5 mt-1.5">
+                      <span>Barer Kapitaleinsatz:</span>
+                      <span className="font-bold text-slate-700 text-right">{formatEUR(cashBreakdown.totalCashInvestment)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Darlehensbetrag:</span>
                       <span className="font-bold text-slate-700">{formatEUR(loanAmount(active))}</span>
                     </div>
+                    {!active.knk.mitfinanzieren && (
+                      <p className="pt-1 text-[10px] leading-snug text-slate-400">
+                        Nicht mitfinanzierte Kaufnebenkosten werden zuerst aus dem eingetragenen Eigenkapital bezahlt; nur der Rest reduziert das Darlehen.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -1767,7 +1831,7 @@ export function App() {
                       label: 'Eigenkapitalrendite (IRR) p. a.',
                       value: formatPercent(metrics.irr),
                       color: metrics.rating === 'green' ? 'text-emerald-700' : metrics.rating === 'red' ? 'text-rose-700' : 'text-amber-600',
-                      desc: 'Interner Zinsfuß inkl. Verkauf über die gesamte Haltedauer',
+                      desc: 'Interner Zinsfuß auf den baren Kapitaleinsatz inkl. Verkauf',
                     },
                     {
                       label: 'Netto-Mietrendite',
@@ -1785,7 +1849,7 @@ export function App() {
                       label: 'Cash-on-Cash Rendite p. a. (Ø)',
                       value: formatPercent(metrics.cocAverage),
                       color: metrics.cocAverage >= 4.0 ? 'text-emerald-700' : 'text-slate-700',
-                      desc: 'Ø jährlicher Cashflow nach Steuern / eingesetztes Eigenkapital',
+                      desc: 'Ø jährlicher Cashflow nach Steuern / barer Kapitaleinsatz',
                     },
                   ].map((kpi) => (
                     <div key={kpi.label} className="flex items-baseline justify-between py-2.5">
@@ -1849,7 +1913,7 @@ export function App() {
                   <CheckCircle className="text-blue-600 shrink-0 mt-0.5" size={18} />
                   <div>
                     Bei einem Kaufpreis von <strong className="text-slate-900">{formatEUR(active.objekt.kaufpreis)}</strong> und{' '}
-                    <strong className="text-slate-900">{formatEUR(cashInvestment(active))}</strong> Eigenkapitaleinsatz erzielen Sie im ersten Jahr eine Netto-Mietrendite von{' '}
+                    <strong className="text-slate-900">{formatEUR(cashBreakdown.totalCashInvestment)}</strong> barem Kapitaleinsatz erzielen Sie im ersten Jahr eine Netto-Mietrendite von{' '}
                     <strong className="text-slate-900">{formatPercent(metrics.nettomietrendite)}</strong>.
                   </div>
                 </div>

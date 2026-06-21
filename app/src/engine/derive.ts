@@ -2,6 +2,14 @@
 // Reine Funktionen ohne Seiteneffekte - von Store UND Tests genutzt.
 import type { Scenario } from './types';
 
+export interface CashInvestmentBreakdown {
+  enteredEquity: number;
+  unfinancedKnkCash: number;
+  additionalCashForUnfinancedKnk: number;
+  equityAvailableAfterKnk: number;
+  totalCashInvestment: number;
+}
+
 /** Kaufnebenkosten in EUR (GrESt + Notar/Grundbuch + Makler) auf Basis des Kaufpreises. */
 export function knkAmount(s: Scenario): number {
   const { grestPct, notarPct, maklerPct } = s.knk;
@@ -22,15 +30,29 @@ export function equityAmount(s: Scenario): number {
   return (base * s.finanzierung.equityPct) / 100;
 }
 
-/** Fehlende Barliquiditaet, wenn KNK nicht mitfinanziert und nicht durch Eigenkapital gedeckt sind. */
+/** Aufteilung des baren Anfangseinsatzes fuer Finanzierung, Renditen und UI-Erklaerung. */
+export function cashInvestmentBreakdown(s: Scenario): CashInvestmentBreakdown {
+  const enteredEquity = equityAmount(s);
+  const unfinancedKnkCash = s.knk.mitfinanzieren ? 0 : knkAmount(s);
+  const additionalCashForUnfinancedKnk = Math.max(0, unfinancedKnkCash - enteredEquity);
+
+  return {
+    enteredEquity,
+    unfinancedKnkCash,
+    additionalCashForUnfinancedKnk,
+    equityAvailableAfterKnk: Math.max(0, enteredEquity - unfinancedKnkCash),
+    totalCashInvestment: enteredEquity + additionalCashForUnfinancedKnk,
+  };
+}
+
+/** Zusaetzliche Barzahlung, wenn nicht mitfinanzierte KNK hoeher als das eingetragene Eigenkapital sind. */
 export function unfinancedKnkCashGap(s: Scenario): number {
-  if (s.knk.mitfinanzieren) return 0;
-  return Math.max(0, knkAmount(s) - equityAmount(s));
+  return cashInvestmentBreakdown(s).additionalCashForUnfinancedKnk;
 }
 
 /** Tatsaechlicher initialer Cash-Einsatz des Investors fuer Rendite- und ETF-Vergleiche. */
 export function cashInvestment(s: Scenario): number {
-  return equityAmount(s) + unfinancedKnkCashGap(s);
+  return cashInvestmentBreakdown(s).totalCashInvestment;
 }
 
 /**

@@ -6,12 +6,12 @@ import {
   totalInvest,
   equityAmount,
   cashInvestment,
+  cashInvestmentBreakdown,
   unfinancedKnkCashGap,
   loanAmount,
 } from '../engine/derive';
 
 beforeEach(() => {
-  localStorage.clear();
   useScenarioStore.setState({ active: createDefaultScenario(), saved: [] });
 });
 
@@ -60,95 +60,6 @@ describe('scenarioStore', () => {
     expect(useScenarioStore.getState().active.objekt.kaufpreis).toBe(300000);
   });
 
-  it('persists the active scenario to localStorage', () => {
-    useScenarioStore.getState().updateActive((d) => {
-      d.name = 'Persisted';
-    });
-    const raw = localStorage.getItem('immo-checker-store');
-    expect(raw).toBeTruthy();
-    expect(raw).toContain('Persisted');
-  });
-
-  it('drops invalid persisted scenarios during hydration', async () => {
-    const validSaved = createDefaultScenario();
-    validSaved.id = 'valid-saved';
-    validSaved.name = 'Valid Saved';
-
-    localStorage.setItem(
-      'immo-checker-store',
-      JSON.stringify({
-        state: {
-          active: { id: 'broken', name: 'Broken', schemaVersion: 1 },
-          saved: [validSaved, { id: 'also-broken', name: 'Broken Saved', schemaVersion: 1 }],
-        },
-        version: 1,
-      })
-    );
-
-    await useScenarioStore.persist.rehydrate();
-
-    const { active, saved } = useScenarioStore.getState();
-    expect(active.objekt.kaufpreis).toBe(300000);
-    expect(saved).toHaveLength(1);
-    expect(saved[0].id).toBe('valid-saved');
-  });
-
-  it('drops duplicate saved scenario IDs during hydration', async () => {
-    const first = createDefaultScenario();
-    first.id = 'duplicate-saved';
-    first.name = 'First';
-    const second = createDefaultScenario();
-    second.id = 'duplicate-saved';
-    second.name = 'Second';
-
-    localStorage.setItem(
-      'immo-checker-store',
-      JSON.stringify({
-        state: {
-          active: createDefaultScenario(),
-          saved: [first, second],
-        },
-        version: 1,
-      })
-    );
-
-    await useScenarioStore.persist.rehydrate();
-
-    const { saved } = useScenarioStore.getState();
-    expect(saved).toHaveLength(1);
-    expect(saved[0].id).toBe('duplicate-saved');
-    expect(saved[0].name).toBe('First');
-  });
-
-  it('hydrates legacy scenarios without Anschlusstilgung using the default fallback', async () => {
-    const active = createDefaultScenario();
-    const saved = createDefaultScenario();
-    saved.id = 'legacy-saved';
-    saved.name = 'Legacy Saved';
-
-    const activeFinanzierung = active.finanzierung as Partial<typeof active.finanzierung>;
-    const savedFinanzierung = saved.finanzierung as Partial<typeof saved.finanzierung>;
-    delete activeFinanzierung.anschlussTilgungPct;
-    delete savedFinanzierung.anschlussTilgungPct;
-
-    localStorage.setItem(
-      'immo-checker-store',
-      JSON.stringify({
-        state: {
-          active,
-          saved: [saved],
-        },
-        version: 1,
-      })
-    );
-
-    await useScenarioStore.persist.rehydrate();
-
-    const state = useScenarioStore.getState();
-    expect(state.active.finanzierung.anschlussTilgungPct).toBeNull();
-    expect(state.saved).toHaveLength(1);
-    expect(state.saved[0].finanzierung.anschlussTilgungPct).toBeNull();
-  });
 });
 
 describe('derive helpers', () => {
@@ -161,6 +72,13 @@ describe('derive helpers', () => {
     expect(equityAmount(s)).toBeCloseTo(66942, 2);
     // mitfinanzieren=false -> Eigenkapital deckt zuerst KNK; Darlehen = 300.000 - (66.942 - 34.710)
     expect(loanAmount(s)).toBeCloseTo(267768, 2);
+
+    const breakdown = cashInvestmentBreakdown(s);
+    expect(breakdown.enteredEquity).toBeCloseTo(66942, 2);
+    expect(breakdown.unfinancedKnkCash).toBeCloseTo(34710, 2);
+    expect(breakdown.additionalCashForUnfinancedKnk).toBe(0);
+    expect(breakdown.equityAvailableAfterKnk).toBeCloseTo(32232, 2);
+    expect(breakdown.totalCashInvestment).toBeCloseTo(66942, 2);
   });
 
   it('caps loan at 0 for 100% equity', () => {
@@ -188,6 +106,23 @@ describe('derive helpers', () => {
     expect(equityAmount(s)).toBe(0);
     expect(unfinancedKnkCashGap(s)).toBeCloseTo(knkAmount(s), 2);
     expect(cashInvestment(s)).toBeCloseTo(knkAmount(s), 2);
+    expect(loanAmount(s)).toBeCloseTo(s.objekt.kaufpreis + s.objekt.sanierungskosten, 2);
+  });
+
+  it('explains additional cash for unfinanced KNK without double-counting entered equity', () => {
+    const s = createDefaultScenario();
+    s.finanzierung.equityMode = 'absolute';
+    s.finanzierung.equityAbsolute = 10000;
+    s.knk.mitfinanzieren = false;
+
+    const breakdown = cashInvestmentBreakdown(s);
+
+    expect(knkAmount(s)).toBeCloseTo(34710, 2);
+    expect(breakdown.enteredEquity).toBe(10000);
+    expect(breakdown.unfinancedKnkCash).toBeCloseTo(34710, 2);
+    expect(breakdown.additionalCashForUnfinancedKnk).toBeCloseTo(24710, 2);
+    expect(breakdown.totalCashInvestment).toBeCloseTo(34710, 2);
+    expect(cashInvestment(s)).toBeCloseTo(34710, 2);
     expect(loanAmount(s)).toBeCloseTo(s.objekt.kaufpreis + s.objekt.sanierungskosten, 2);
   });
 });

@@ -70,6 +70,10 @@ describe('Holding-period analysis (Story 13)', () => {
       2,
     );
     expect(row.gesamtgewinn).toBeLessThan(row.nettoVerkaufserloesNachSteuer - analysis.initialEquity);
+    expect(row.kumulierterEkNachschuss).toBeGreaterThan(0);
+    expect(row.ekGesamteinsatz).toBeCloseTo(analysis.initialEquity + row.kumulierterEkNachschuss, 2);
+    expect(row.ekRenditeGesamteinsatzPct).toBeCloseTo((row.gesamtgewinn / row.ekGesamteinsatz) * 100, 6);
+    expect(Math.abs(row.ekRenditeGesamteinsatzPct)).toBeLessThan(Math.abs(row.ekRenditeGesamtPct));
   });
 
   it('applies Spekulationssteuer before year 10 and not at/after year 10', () => {
@@ -97,6 +101,8 @@ describe('Holding-period analysis (Story 13)', () => {
       expect(Number.isFinite(y.cagrPct)).toBe(true);
       expect(Number.isFinite(y.ekMultiple)).toBe(true);
       expect(Number.isFinite(y.ekRenditeGesamtPct)).toBe(true);
+      expect(Number.isFinite(y.ekRenditeGesamteinsatzPct)).toBe(true);
+      expect(y.ekGesamteinsatz).toBeGreaterThanOrEqual(analysis.initialEquity);
       // multiple and total return % are consistent: multiple = 1 + return/100
       expect(y.ekMultiple).toBeCloseTo(1 + y.ekRenditeGesamtPct / 100, 6);
     }

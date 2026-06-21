@@ -2692,7 +2692,8 @@ export function App() {
                               <th className="py-2 px-3 font-semibold text-right">Spek.-Steuer</th>
                               <th className="py-2 px-3 font-semibold text-right">Kum. Cashflow</th>
                               <th className="py-2 px-3 font-semibold text-right">Gesamtgewinn</th>
-                              <th className="py-2 px-3 font-semibold text-right">EK-Rendite ges.</th>
+                              <th className="py-2 px-3 font-semibold text-right">EK-Rendite Start-EK</th>
+                              <th className="py-2 px-3 font-semibold text-right">EK-Rendite inkl. Nachschuss</th>
                               <th className="py-2 px-3 font-semibold text-right">IRR p. a.</th>
                               <th className="py-2 pl-3 font-semibold text-right">CAGR p. a.</th>
                             </tr>
@@ -2728,6 +2729,7 @@ export function App() {
                                     {formatEUR(y.gesamtgewinn)}
                                   </td>
                                   <td className="py-1.5 px-3 text-right">{formatPercent(y.ekRenditeGesamtPct)}</td>
+                                  <td className="py-1.5 px-3 text-right">{formatPercent(y.ekRenditeGesamteinsatzPct)}</td>
                                   <td className={`py-1.5 px-3 text-right font-semibold ${irrColor}`}>{formatPercent(y.irrPct)}</td>
                                   <td className="py-1.5 pl-3 text-right text-slate-500">{formatPercent(y.cagrPct)}</td>
                                 </tr>
@@ -2739,7 +2741,8 @@ export function App() {
                       <p className="text-[10px] text-slate-400 mt-3">
                         Blaue Zeile = aktuell gewählte Haltedauer ({active.exit.haltedauerJahre} Jahre). Gesamtgewinn = kumulierter
                         Cashflow nach Steuer + Netto-Verkaufserlös nach Spekulationssteuer − eingesetztes Eigenkapital
-                        ({formatEUR(holdingAnalysis.initialEquity)}).
+                        ({formatEUR(holdingAnalysis.initialEquity)}). EK-Rendite Gesamteinsatz nutzt als Nenner Start-EK plus alle
+                        negativen laufenden Cashflows als weitere EK-Nachschüsse.
                       </p>
                     </div>
                   </CardContent>

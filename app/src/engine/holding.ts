@@ -15,8 +15,11 @@ export interface HoldingYearAnalysis {
   spekulationssteuerPflichtig: boolean; // true wenn Verkauf innerhalb der 10-Jahres-Frist
   nettoVerkaufserloesNachSteuer: number;
   kumulierterCashflowNachSteuer: number; // Summe Cashflow n. St. Jahr 1..t (kann negativ sein)
+  kumulierterEkNachschuss: number; // Summe negativer Cashflows als zusaetzlich aufgebrachtes EK
+  ekGesamteinsatz: number; // initiales EK + kumulierter EK-Nachschuss
   gesamtgewinn: number; // kumCf + nettoVerkaufserloesNachSteuer - eingesetztes Eigenkapital
   ekRenditeGesamtPct: number; // Gesamtgewinn / Eigenkapital in % (insgesamt ueber Haltedauer)
+  ekRenditeGesamteinsatzPct: number; // Gesamtgewinn / (initiales EK + negative Cashflows) in %
   ekMultiple: number; // (Eigenkapital + Gesamtgewinn) / Eigenkapital
   irrPct: number; // annualisierte Eigenkapitalrendite (interner Zinsfuss)
   cagrPct: number; // annualisiert auf Basis des Gesamt-Multiples (Fallback/Vergleich zur IRR)
@@ -68,7 +71,12 @@ export function analyzeHoldingPeriods(scenario: Scenario): HoldingAnalysis {
 
     const gesamtgewinn = kumCf + exitT.nettoVerkaufserloesNachSteuer - initialEquity;
     const finalValue = initialEquity + gesamtgewinn; // = kumCf + nettoVerkaufserloesNachSteuer
+    const kumulierterEkNachschuss = projT.years
+      .slice(0, t)
+      .reduce((sum, y) => sum + Math.max(0, -y.cashflowNachSteuer), 0);
+    const ekGesamteinsatz = initialEquity + kumulierterEkNachschuss;
     const ekRenditeGesamtPct = initialEquity > 0 ? (gesamtgewinn / initialEquity) * 100 : 0;
+    const ekRenditeGesamteinsatzPct = ekGesamteinsatz > 0 ? (gesamtgewinn / ekGesamteinsatz) * 100 : 0;
     const ekMultiple = initialEquity > 0 ? finalValue / initialEquity : 0;
     const cagrPct =
       initialEquity > 0 && finalValue > 0
@@ -93,8 +101,11 @@ export function analyzeHoldingPeriods(scenario: Scenario): HoldingAnalysis {
       spekulationssteuerPflichtig: t < 10,
       nettoVerkaufserloesNachSteuer: exitT.nettoVerkaufserloesNachSteuer,
       kumulierterCashflowNachSteuer: kumCf,
+      kumulierterEkNachschuss,
+      ekGesamteinsatz,
       gesamtgewinn,
       ekRenditeGesamtPct,
+      ekRenditeGesamteinsatzPct,
       ekMultiple,
       irrPct,
       cagrPct,

@@ -14,6 +14,8 @@
 - IRR = Internal Rate of Return (interner Zinsfuss der Eigenkapital-Cashflows)
 - ROE = Return on Equity (Eigenkapitalrendite)
 - CoC = Cash-on-Cash-Rendite (Netto-Cashflow / eingesetztes Eigenkapital)
+- RLS = Row Level Security (datenbankseitige Zeilenrechte in Supabase/Postgres)
+- RPC = Remote Procedure Call (hier: aufrufbare Supabase-Datenbankfunktion)
 - Spekulationsfrist = 10-Jahres-Frist, nach der ein privater Immobilienverkaufsgewinn steuerfrei ist (§23 EStG)
 - Grenzsteuersatz = Steuersatz auf den naechsten verdienten Euro (entscheidet ueber den Steuervorteil)
 
@@ -91,12 +93,18 @@ Allgemeine Arbeitsregeln:
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
 ## Handover Naechster Thread (Stand: 2026-06-21)
-- Implementiert und verifiziert: Stories 0 bis 13. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (132/132 Tests).
+- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin-Erweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (135/135 Tests).
 - Offener Fokus: Keine offenen Stories.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
   2. Naechster sinnvoller Fokus ist gezielter UX-/Fachreview mit realen Objektbeispielen.
 - Verify-Setup: `cd app && npm run lint && npm run typecheck && npm run build && npm run test`.
+
+## Nachtraegliche Auth/Admin-Erweiterung (Stand: 2026-06-21)
+- Die Berechnungslogik bleibt client-seitig. Anmeldung, Profilstatus und optionale Cloud-Szenario-Synchronisation laufen ueber Supabase Auth, `profiles` und `scenarios`.
+- Admins koennen User im Admin-Dashboard genehmigen, sperren, loeschen, Passwort-Reset-Mails senden und die globale Einstellung `Neue Accounts brauchen Admin-Freigabe` an-/ausschalten.
+- Bestehende Supabase-Instanzen muessen fuer Auth/Admin-Fixes die idempotente Migration `supabase-auth-admin-migration.sql` ausfuehren; Neuinstallationen nutzen `supabase-setup.sql`.
+- Auth-E-Mail-Links muessen auf die Vite-App-Basis zeigen, z. B. `/Immo-Checker/`, damit statische Hosts nicht mit 404 auf Unterrouten antworten.
 
 ## Story-Status-Uebersicht (Stand: 2026-06-20)
 | Story | Thema | Status |

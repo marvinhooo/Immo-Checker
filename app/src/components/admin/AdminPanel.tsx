@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
+import { buildAuthRedirectUrl } from '../../lib/authRedirect';
 
 interface AdminUser {
   user_id: string;
@@ -18,6 +19,9 @@ interface AdminPanelProps {
 export function AdminPanel({ onClose }: AdminPanelProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [newAccountsRequireApproval, setNewAccountsRequireApproval] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -32,7 +36,35 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadUsers(); }, [loadUsers]);
+  const loadSettings = useCallback(async () => {
+    const { data, error: err } = await supabase.rpc('admin_get_auth_settings');
+    if (err) {
+      setError(err.message);
+    } else {
+      setNewAccountsRequireApproval(data?.[0]?.new_accounts_require_approval ?? true);
+    }
+    setSettingsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadUsers();
+    loadSettings();
+  }, [loadUsers, loadSettings]);
+
+  const handleToggleApprovalRequirement = async () => {
+    const nextValue = !newAccountsRequireApproval;
+    setSettingsSaving(true);
+    setError(null);
+    const { error: err } = await supabase.rpc('admin_set_auth_settings', {
+      require_approval: nextValue,
+    });
+    if (err) {
+      setError(err.message);
+    } else {
+      setNewAccountsRequireApproval(nextValue);
+    }
+    setSettingsSaving(false);
+  };
 
   const handleApprove = async (userId: string) => {
     setActionLoading(userId);
@@ -67,8 +99,9 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
 
   const handleResetPassword = async (email: string) => {
     if (!confirm(`Passwort-Reset-Mail an "${email}" senden?`)) return;
-    const redirectTo = window.location.origin + (import.meta.env.BASE_URL || '/');
-    const { error: err } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: buildAuthRedirectUrl(),
+    });
     if (err) {
       setError(err.message);
     } else {
@@ -95,6 +128,33 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
         </div>
 
         <div className="p-6">
+          <div className="mb-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Neue Accounts</p>
+              <p className="text-sm font-semibold text-slate-800">
+                {newAccountsRequireApproval
+                  ? 'Admin-Freigabe erforderlich'
+                  : 'Nach E-Mail-Bestätigung automatisch freigegeben'}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={newAccountsRequireApproval}
+              onClick={handleToggleApprovalRequirement}
+              disabled={settingsLoading || settingsSaving}
+              className={`relative h-7 w-12 rounded-full transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
+                newAccountsRequireApproval ? 'bg-blue-600' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition ${
+                  newAccountsRequireApproval ? 'left-6' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
           {error && (
             <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">
               {error}
@@ -106,9 +166,9 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
               <div className="h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
               <p className="text-sm text-slate-500 mt-2">Lade User-Liste...</p>
             </div>
-          ) : users.length === 0 ? (
+          ) : users.length === 0 && !error ? (
             <p className="text-sm text-slate-500 text-center py-8">Keine User gefunden.</p>
-          ) : (
+          ) : users.length === 0 ? null : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>

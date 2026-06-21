@@ -149,6 +149,46 @@ describe('io', () => {
     expect(imported.finanzierung.anschlussTilgungPct).toBeNull();
   });
 
+  it('should import old scenarios without KNK-Fremdfinanzierungsanteil using the legacy boolean', () => {
+    const sc = createDefaultScenario();
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const knk = parsed.knk as Record<string, unknown>;
+    knk.mitfinanzieren = true;
+    delete knk.finanzierungsPct;
+
+    const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
+
+    expect(imported.knk.mitfinanzieren).toBe(true);
+    expect(imported.knk.finanzierungsPct).toBe(100);
+  });
+
+  it('should preserve and validate configured KNK-Fremdfinanzierungsanteil on import', () => {
+    const sc = createDefaultScenario({
+      knk: {
+        grestPct: 6.5,
+        notarPct: 1.5,
+        maklerPct: 3.57,
+        mitfinanzieren: true,
+        finanzierungsPct: 40,
+      },
+    });
+
+    const imported = importScenarios(exportScenario(sc)) as Scenario;
+
+    expect(imported.knk.finanzierungsPct).toBe(40);
+  });
+
+  it('should reject imported KNK-Fremdfinanzierungsanteil outside hard domain bounds', () => {
+    const sc = createDefaultScenario();
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const knk = parsed.knk as Record<string, unknown>;
+    knk.finanzierungsPct = 101;
+
+    expect(() => importScenarios(JSON.stringify(parsed))).toThrow(
+      'finanzierungsPct muss eine Zahl zwischen 0 und 100 sein.'
+    );
+  });
+
   it('should preserve and validate configured Anschlusstilgung on import', () => {
     const sc = createDefaultScenario({
       finanzierung: {

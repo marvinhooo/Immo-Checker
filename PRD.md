@@ -90,8 +90,8 @@ Allgemeine Arbeitsregeln:
 - Schreibe sauberen, testbaren Code mit klaren Schnittstellen. Rechenkern bleibt UI-frei und deterministisch.
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
-## Handover Naechster Thread (Stand: 2026-06-20)
-- Implementiert und verifiziert: Stories 0 bis 13. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (126/126 Tests).
+## Handover Naechster Thread (Stand: 2026-06-21)
+- Implementiert und verifiziert: Stories 0 bis 13. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (127/127 Tests).
 - Offener Fokus: Keine offenen Stories.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
@@ -155,8 +155,8 @@ Prioritaet: Hoch | Status: DONE (2026-06-20)
 Anforderungen:
 - Vollstaendiges Eingabe-Datenmodell als TypeScript-Typen in `src/engine/types.ts`. Mindestens:
   - Objekt: Kaufpreis, Wohnflaeche m2, Baujahr/Fertigstellungsjahr, Bundesland, Objekttyp (Bestand/Neubau/Denkmal), Bodenwertanteil %, Sanierungskosten (Denkmal-Topf).
-  - Kaufnebenkosten: GrESt % (aus Bundesland vorbelegt, editierbar), Notar/Grundbuch %, Makler %, Flag "KNK mitfinanzieren" (Default: nein).
-  - Finanzierung: Eigenkapital (% ODER absolut, umschaltbar), Darlehensbetrag (abgeleitet), Sollzins %, anfaengliche Tilgung %, Zinsbindung (Jahre), Anschlusszins % (nach Zinsbindung), jaehrliche Sondertilgung (Betrag oder %), optional Disagio.
+  - Kaufnebenkosten: GrESt % (aus Bundesland vorbelegt, editierbar), Notar/Grundbuch %, Makler %, Flag "KNK fremdfinanzieren" (Default: nein) und optionaler fremdfinanzierter KNK-Anteil %.
+  - Finanzierung: Eigenkapital (% ODER absolut, umschaltbar) fuer Kaufpreis + Sanierungskosten ohne KNK, Darlehensbetrag (abgeleitet), Sollzins %, anfaengliche Tilgung %, Zinsbindung (Jahre), Anschlusszins % (nach Zinsbindung), jaehrliche Sondertilgung (Betrag oder %), optional Disagio.
   - Miete: Kaltmiete (EUR/Monat oder EUR/m2), Leerstand/Mietausfallwagnis %, Mietsteigerungs-Szenario (flexible Zeitreihe, s. Story 3).
   - Laufende Kosten: Instandhaltungsruecklage (EUR/m2/Jahr ODER % der Miete ODER absolut), Verwaltungskosten (nicht-umlagefaehig), sonstige nicht-umlagefaehige Kosten; Kostensteigerung % p. a.
   - Steuer: Eingabemodus (Bruttojahresgehalt zvE ODER fester Grenzsteuersatz %), Veranlagung (Single/Splitting), Soli-Toggle, Kirchensteuer % (Toggle).

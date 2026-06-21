@@ -4,6 +4,7 @@ import type { Scenario } from './types';
 
 export interface CashInvestmentBreakdown {
   enteredEquity: number;
+  financedKnk: number;
   unfinancedKnkCash: number;
   additionalCashForUnfinancedKnk: number;
   equityAvailableAfterKnk: number;
@@ -21,33 +22,46 @@ export function totalInvest(s: Scenario): number {
   return s.objekt.kaufpreis + knkAmount(s) + s.objekt.sanierungskosten;
 }
 
-/** Eingesetztes Eigenkapital in EUR (aus % der Gesamtinvestition oder absolut). */
+/** Finanzierungsbasis fuer Kaufpreis und Sanierungskosten, ohne Kaufnebenkosten. */
+export function purchaseFinancingBase(s: Scenario): number {
+  return s.objekt.kaufpreis + s.objekt.sanierungskosten;
+}
+
+/** Eigenkapital fuer Kaufpreis/Sanierung in EUR (aus % der Finanzierungsbasis oder absolut). */
 export function equityAmount(s: Scenario): number {
-  const base = totalInvest(s);
+  const base = purchaseFinancingBase(s);
   if (s.finanzierung.equityMode === 'absolute') {
     return Math.min(Math.max(0, s.finanzierung.equityAbsolute), base);
   }
   return (base * s.finanzierung.equityPct) / 100;
 }
 
+/** Fremdfinanzierter Anteil der Kaufnebenkosten in EUR. */
+export function financedKnkAmount(s: Scenario): number {
+  if (!s.knk.mitfinanzieren) return 0;
+  const pct = Math.min(100, Math.max(0, s.knk.finanzierungsPct));
+  return (knkAmount(s) * pct) / 100;
+}
+
 /** Aufteilung des baren Anfangseinsatzes fuer Finanzierung, Renditen und UI-Erklaerung. */
 export function cashInvestmentBreakdown(s: Scenario): CashInvestmentBreakdown {
   const enteredEquity = equityAmount(s);
-  const unfinancedKnkCash = s.knk.mitfinanzieren ? 0 : knkAmount(s);
-  const additionalCashForUnfinancedKnk = Math.max(0, unfinancedKnkCash - enteredEquity);
+  const financedKnk = financedKnkAmount(s);
+  const unfinancedKnkCash = Math.max(0, knkAmount(s) - financedKnk);
 
   return {
     enteredEquity,
+    financedKnk,
     unfinancedKnkCash,
-    additionalCashForUnfinancedKnk,
-    equityAvailableAfterKnk: Math.max(0, enteredEquity - unfinancedKnkCash),
-    totalCashInvestment: enteredEquity + additionalCashForUnfinancedKnk,
+    additionalCashForUnfinancedKnk: 0,
+    equityAvailableAfterKnk: enteredEquity,
+    totalCashInvestment: enteredEquity + unfinancedKnkCash,
   };
 }
 
-/** Zusaetzliche Barzahlung, wenn nicht mitfinanzierte KNK hoeher als das eingetragene Eigenkapital sind. */
+/** Zusaetzliche Barzahlung fuer nicht fremdfinanzierte KNK. */
 export function unfinancedKnkCashGap(s: Scenario): number {
-  return cashInvestmentBreakdown(s).additionalCashForUnfinancedKnk;
+  return cashInvestmentBreakdown(s).unfinancedKnkCash;
 }
 
 /** Tatsaechlicher initialer Cash-Einsatz des Investors fuer Rendite- und ETF-Vergleiche. */
@@ -57,17 +71,13 @@ export function cashInvestment(s: Scenario): number {
 
 /**
  * Darlehensbetrag in EUR.
- * Wenn Kaufnebenkosten nicht mitfinanziert werden, deckt Eigenkapital zuerst diese Bar-Kosten.
+ * Eigenkapital reduziert Kaufpreis/Sanierung. KNK werden separat bar getragen oder anteilig fremdfinanziert.
  * Ein Disagio erhoeht den nominalen Darlehensbetrag, weil nur der Netto-Auszahlungsbetrag
  * zur Finanzierung der Investition verfuegbar ist.
  */
 export function loanAmount(s: Scenario): number {
-  const knk = knkAmount(s);
   const equity = equityAmount(s);
-  const financedBase = s.objekt.kaufpreis + s.objekt.sanierungskosten;
-  const netFinancingNeed = s.knk.mitfinanzieren
-    ? totalInvest(s) - equity
-    : financedBase - Math.max(0, equity - knk);
+  const netFinancingNeed = purchaseFinancingBase(s) - equity + financedKnkAmount(s);
 
   const netLoan = Math.max(0, netFinancingNeed);
   const disagioPct = Math.min(Math.max(0, s.finanzierung.disagioPct), 99.999);

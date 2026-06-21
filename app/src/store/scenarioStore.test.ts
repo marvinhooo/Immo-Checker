@@ -68,17 +68,17 @@ describe('derive helpers', () => {
     // KNK = 300.000 * (6,5 + 1,5 + 3,57)% = 34.710
     expect(knkAmount(s)).toBeCloseTo(34710, 2);
     expect(totalInvest(s)).toBeCloseTo(334710, 2);
-    // Eigenkapital = 20 % der Gesamtinvestition
-    expect(equityAmount(s)).toBeCloseTo(66942, 2);
-    // mitfinanzieren=false -> Eigenkapital deckt zuerst KNK; Darlehen = 300.000 - (66.942 - 34.710)
-    expect(loanAmount(s)).toBeCloseTo(267768, 2);
+    // Eigenkapital = 20 % von Kaufpreis + Sanierung, KNK werden separat behandelt.
+    expect(equityAmount(s)).toBeCloseTo(60000, 2);
+    expect(loanAmount(s)).toBeCloseTo(240000, 2);
 
     const breakdown = cashInvestmentBreakdown(s);
-    expect(breakdown.enteredEquity).toBeCloseTo(66942, 2);
+    expect(breakdown.enteredEquity).toBeCloseTo(60000, 2);
+    expect(breakdown.financedKnk).toBe(0);
     expect(breakdown.unfinancedKnkCash).toBeCloseTo(34710, 2);
     expect(breakdown.additionalCashForUnfinancedKnk).toBe(0);
-    expect(breakdown.equityAvailableAfterKnk).toBeCloseTo(32232, 2);
-    expect(breakdown.totalCashInvestment).toBeCloseTo(66942, 2);
+    expect(breakdown.equityAvailableAfterKnk).toBeCloseTo(60000, 2);
+    expect(breakdown.totalCashInvestment).toBeCloseTo(94710, 2);
   });
 
   it('caps loan at 0 for 100% equity', () => {
@@ -109,7 +109,7 @@ describe('derive helpers', () => {
     expect(loanAmount(s)).toBeCloseTo(s.objekt.kaufpreis + s.objekt.sanierungskosten, 2);
   });
 
-  it('explains additional cash for unfinanced KNK without double-counting entered equity', () => {
+  it('keeps purchase equity separate from unfinanced KNK cash', () => {
     const s = createDefaultScenario();
     s.finanzierung.equityMode = 'absolute';
     s.finanzierung.equityAbsolute = 10000;
@@ -119,10 +119,46 @@ describe('derive helpers', () => {
 
     expect(knkAmount(s)).toBeCloseTo(34710, 2);
     expect(breakdown.enteredEquity).toBe(10000);
+    expect(breakdown.financedKnk).toBe(0);
     expect(breakdown.unfinancedKnkCash).toBeCloseTo(34710, 2);
-    expect(breakdown.additionalCashForUnfinancedKnk).toBeCloseTo(24710, 2);
-    expect(breakdown.totalCashInvestment).toBeCloseTo(34710, 2);
-    expect(cashInvestment(s)).toBeCloseTo(34710, 2);
-    expect(loanAmount(s)).toBeCloseTo(s.objekt.kaufpreis + s.objekt.sanierungskosten, 2);
+    expect(breakdown.additionalCashForUnfinancedKnk).toBe(0);
+    expect(breakdown.totalCashInvestment).toBeCloseTo(44710, 2);
+    expect(cashInvestment(s)).toBeCloseTo(44710, 2);
+    expect(loanAmount(s)).toBeCloseTo(s.objekt.kaufpreis + s.objekt.sanierungskosten - 10000, 2);
+  });
+
+  it('supports partial KNK debt financing independently from purchase equity', () => {
+    const s = createDefaultScenario();
+    s.finanzierung.equityMode = 'absolute';
+    s.finanzierung.equityAbsolute = 10000;
+    s.knk.mitfinanzieren = true;
+    s.knk.finanzierungsPct = 50;
+
+    const breakdown = cashInvestmentBreakdown(s);
+
+    expect(breakdown.financedKnk).toBeCloseTo(knkAmount(s) / 2, 2);
+    expect(breakdown.unfinancedKnkCash).toBeCloseTo(knkAmount(s) / 2, 2);
+    expect(breakdown.totalCashInvestment).toBeCloseTo(10000 + knkAmount(s) / 2, 2);
+    expect(loanAmount(s)).toBeCloseTo(
+      s.objekt.kaufpreis + s.objekt.sanierungskosten - 10000 + knkAmount(s) / 2,
+      2
+    );
+  });
+
+  it('reduces the loan by purchase equity even when KNK are paid separately', () => {
+    const s = createDefaultScenario();
+    s.objekt.kaufpreis = 115000;
+    s.objekt.sanierungskosten = 1500;
+    s.knk.grestPct = 12156 / 115000 * 100;
+    s.knk.notarPct = 0;
+    s.knk.maklerPct = 0;
+    s.knk.mitfinanzieren = false;
+    s.knk.finanzierungsPct = 0;
+    s.finanzierung.equityMode = 'absolute';
+    s.finanzierung.equityAbsolute = 12866;
+
+    expect(knkAmount(s)).toBeCloseTo(12156, 2);
+    expect(cashInvestment(s)).toBeCloseTo(25022, 2);
+    expect(loanAmount(s)).toBeCloseTo(103634, 2);
   });
 });

@@ -155,8 +155,8 @@ describe('Projection Engine', () => {
     expect(higherProjection.years[11].restschuld).toBeLessThan(baseProjection.years[11].restschuld);
   });
 
-  it('keeps equivalent financing economically consistent when EK exactly covers KNK', () => {
-    const noEquityScenario = createDefaultScenario({
+  it('keeps zero purchase equity equivalent across percent and absolute modes', () => {
+    const noPurchaseEquityScenario = createDefaultScenario({
       finanzierung: {
         equityMode: 'percent',
         equityPct: 0,
@@ -175,11 +175,11 @@ describe('Projection Engine', () => {
         mitfinanzieren: false,
       },
     });
-    const cashKnkScenario = createDefaultScenario({
+    const equivalentAbsoluteScenario = createDefaultScenario({
       finanzierung: {
         equityMode: 'absolute',
         equityPct: 0,
-        equityAbsolute: 34710,
+        equityAbsolute: 0,
         sollzinsPct: 3.8,
         tilgungPct: 2.0,
         zinsbindungJahre: 10,
@@ -195,8 +195,8 @@ describe('Projection Engine', () => {
       },
     });
 
-    const a = runProjection(noEquityScenario, 1);
-    const b = runProjection(cashKnkScenario, 1);
+    const a = runProjection(noPurchaseEquityScenario, 1);
+    const b = runProjection(equivalentAbsoluteScenario, 1);
 
     expect(a.initialEquity).toBeCloseTo(b.initialEquity, 2);
     expect(a.loanAmount).toBeCloseTo(b.loanAmount, 2);
@@ -298,17 +298,16 @@ describe('Projection Engine', () => {
     // Initial calculations:
     // knkAmount = 100000 * 5% = 5000
     // totalInvest = 100000 + 5000 = 105000
-    // loanAmount = 100000 - (25000 - 5000) = 80000
-    expect(result.initialEquity).toBe(25000);
+    // loanAmount = 100000 - 25000 = 75000; KNK bleiben separater Baranteil.
+    expect(result.initialEquity).toBe(30000);
     expect(result.totalInvestment).toBe(105000);
-    expect(result.loanAmount).toBe(80000);
+    expect(result.loanAmount).toBe(75000);
 
     // Amortization:
-    // Sollzins + Tilgung = 6% p.a. -> Annuity = 80000 * 6% = 4800 / year (400 / month)
+    // Sollzins + Tilgung = 6% p.a. -> Annuity = 75000 * 6% = 4500 / year (375 / month)
     // Year 1:
     // Interest is calculated monthly:
-    // Month 1: interest = 80000 * 4% / 12 = 266.67, tilgung = 400 - 266.67 = 133.33
-    // By simulating monthly, the interest for Year 1 is approx 3169.58, tilgung is approx 1630.42
+    // Month 1: interest = 75000 * 4% / 12 = 250.00, tilgung = 375 - 250 = 125.00
     // Let's verify the exact year-end values:
     const y1 = result.years[0];
     expect(y1.jahr).toBe(1);

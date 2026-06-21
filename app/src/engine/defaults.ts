@@ -36,6 +36,7 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
       notarPct: 1.5,
       maklerPct: 3.57,
       mitfinanzieren: false,
+      finanzierungsPct: 0,
     },
     finanzierung: {
       equityMode: 'percent',

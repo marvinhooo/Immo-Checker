@@ -135,7 +135,12 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   requireNumberInRange(knk, 'grestPct', 0, 100, prefix);
   requireNumberInRange(knk, 'notarPct', 0, 100, prefix);
   requireNumberInRange(knk, 'maklerPct', 0, 100, prefix);
-  requireBoolean(knk, 'mitfinanzieren', prefix);
+  const knkMitfinanzieren = requireBoolean(knk, 'mitfinanzieren', prefix);
+  if (knk.finanzierungsPct === undefined || knk.finanzierungsPct === null) {
+    knk.finanzierungsPct = knkMitfinanzieren ? 100 : 0;
+  } else {
+    requireNumberInRange(knk, 'finanzierungsPct', 0, 100, prefix);
+  }
 
   const finanzierung = requireSection(s, 'finanzierung', prefix);
   requireEnum(finanzierung, 'equityMode', EQUITY_MODES, prefix);

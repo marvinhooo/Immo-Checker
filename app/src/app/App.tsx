@@ -7,7 +7,6 @@ import {
   knkAmount,
   totalInvest,
   cashInvestmentBreakdown,
-  unfinancedKnkCashGap,
   loanAmount,
 } from '../engine/derive';
 import { runProjection } from '../engine/projection';
@@ -355,10 +354,6 @@ export function App() {
     const firstYearCf = proj.years[0]?.cashflowNachSteuerMonatlich ?? 0;
     if (firstYearCf < 0) {
       list.push(`Monatlicher Cashflow ist im ersten Jahr negativ (${formatEUR(firstYearCf)}/Monat). Sie müssen monatlich Geld zuschießen.`);
-    }
-    const knkGap = unfinancedKnkCashGap(active);
-    if (knkGap > 0) {
-      list.push(`Die nicht mitfinanzierten Kaufnebenkosten liegen ${formatEUR(knkGap)} über dem eingetragenen Eigenkapital. Die App unterstellt diesen Betrag als zusätzliche Barzahlung und rechnet ihn in den Kapitaleinsatz ein.`);
     }
     const maxLtv = Math.max(...proj.years.map(y => y.ltv));
     if (maxLtv > 100) {
@@ -942,16 +937,36 @@ export function App() {
                     />
                   </div>
                   <Toggle
-                    label="Kaufnebenkosten mitfinanzieren"
-                    description="Wenn aktiv, werden KNK in das Darlehen aufgenommen"
+                    label="KNK fremdfinanzieren?"
+                    description="Wenn aktiv, wird der gewählte Anteil der Kaufnebenkosten ins Darlehen aufgenommen"
                     checked={active.knk.mitfinanzieren}
-                    onChange={(val) => updateActive((d) => { d.knk.mitfinanzieren = val; })}
+                    onChange={(val) => updateActive((d) => {
+                      d.knk.mitfinanzieren = val;
+                      d.knk.finanzierungsPct = val ? (d.knk.finanzierungsPct > 0 ? d.knk.finanzierungsPct : 100) : 0;
+                    })}
                   />
+                  {active.knk.mitfinanzieren && (
+                    <Slider
+                      label="KNK-Fremdfinanzierung (%)"
+                      value={active.knk.finanzierungsPct}
+                      onChange={(val) => updateActive((d) => { d.knk.finanzierungsPct = val; })}
+                      min={0}
+                      max={100}
+                      step={1}
+                      suffix="%"
+                    />
+                  )}
                   <div className="rounded-xl bg-slate-50 p-3.5 text-xs text-slate-500 space-y-1 font-medium">
                     <div className="flex justify-between">
                       <span>Kaufnebenkosten gesamt:</span>
                       <span className="font-bold text-slate-700">{formatEUR(knkAmount(active))} ({formatPercent(active.knk.grestPct + active.knk.notarPct + active.knk.maklerPct, 2)})</span>
                     </div>
+                    {active.knk.mitfinanzieren && (
+                      <div className="flex justify-between">
+                        <span>Davon fremdfinanziert:</span>
+                        <span className="font-bold text-slate-700">{formatEUR(cashBreakdown.financedKnk)} ({formatPercent(active.knk.finanzierungsPct)})</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span>Gesamtinvestitionskosten:</span>
                       <span className="font-bold text-slate-700">{formatEUR(totalInvest(active))}</span>
@@ -994,7 +1009,7 @@ export function App() {
                   </div>
                   {active.finanzierung.equityMode === 'percent' ? (
                     <Slider
-                      label="Eigenkapital (%)"
+                      label="Eigenkapital auf Kaufpreis + Sanierung (%)"
                       value={active.finanzierung.equityPct}
                       onChange={(val) => updateActive((d) => { d.finanzierung.equityPct = val; })}
                       min={0}
@@ -1003,7 +1018,7 @@ export function App() {
                     />
                   ) : (
                     <NumberInput
-                      label="Eigenkapital (€)"
+                      label="Eigenkapital für Kaufpreis + Sanierung (€)"
                       value={active.finanzierung.equityAbsolute}
                       suffix="EUR"
                       min={0}
@@ -1090,19 +1105,19 @@ export function App() {
                   </div>
                   <div className="rounded-xl bg-slate-50 p-3.5 text-xs text-slate-500 space-y-1 font-medium">
                     <div className="flex justify-between">
-                      <span>Eingetragenes Eigenkapital:</span>
+                      <span>EK für Kaufpreis/Sanierung:</span>
                       <span className="font-bold text-slate-700">{formatEUR(cashBreakdown.enteredEquity)}</span>
                     </div>
-                    {!active.knk.mitfinanzieren && (
+                    {cashBreakdown.unfinancedKnkCash > 0 && (
                       <div className="flex justify-between gap-4">
                         <span>Bar gezahlte Kaufnebenkosten:</span>
                         <span className="font-bold text-slate-700 text-right">{formatEUR(cashBreakdown.unfinancedKnkCash)}</span>
                       </div>
                     )}
-                    {cashBreakdown.additionalCashForUnfinancedKnk > 0 && (
-                      <div className="flex justify-between gap-4 text-amber-700">
-                        <span>Zusätzlich angenommene Barzahlung:</span>
-                        <span className="font-bold text-right">{formatEUR(cashBreakdown.additionalCashForUnfinancedKnk)}</span>
+                    {cashBreakdown.financedKnk > 0 && (
+                      <div className="flex justify-between gap-4">
+                        <span>Fremdfinanzierte Kaufnebenkosten:</span>
+                        <span className="font-bold text-slate-700 text-right">{formatEUR(cashBreakdown.financedKnk)}</span>
                       </div>
                     )}
                     <div className="flex justify-between gap-4 border-t border-slate-200 pt-1.5 mt-1.5">
@@ -1113,11 +1128,9 @@ export function App() {
                       <span>Darlehensbetrag:</span>
                       <span className="font-bold text-slate-700">{formatEUR(loanAmount(active))}</span>
                     </div>
-                    {!active.knk.mitfinanzieren && (
-                      <p className="pt-1 text-[10px] leading-snug text-slate-400">
-                        Nicht mitfinanzierte Kaufnebenkosten werden zuerst aus dem eingetragenen Eigenkapital bezahlt; nur der Rest reduziert das Darlehen.
-                      </p>
-                    )}
+                    <p className="pt-1 text-[10px] leading-snug text-slate-400">
+                      Eigenkapital reduziert Kaufpreis und Sanierung direkt. Kaufnebenkosten werden separat bar gezahlt oder anteilig fremdfinanziert.
+                    </p>
                   </div>
                 </div>
               )}

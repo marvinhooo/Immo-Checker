@@ -43,13 +43,14 @@ export interface KaufnebenkostenInput {
   grestPct: number; // Grunderwerbsteuer %
   notarPct: number; // Notar + Grundbuch %
   maklerPct: number; // Maklerprovision (Kaeuferanteil) %
-  mitfinanzieren: boolean; // Kaufnebenkosten ins Darlehen aufnehmen? (Default: nein)
+  mitfinanzieren: boolean; // Kaufnebenkosten anteilig ins Darlehen aufnehmen? (Default: nein)
+  finanzierungsPct: number; // Anteil der KNK, der fremdfinanziert wird, wenn mitfinanzieren = true
 }
 
 export interface FinanzierungInput {
   equityMode: EquityMode;
-  equityPct: number; // genutzt wenn equityMode = 'percent' (% der Gesamtinvestition)
-  equityAbsolute: number; // genutzt wenn equityMode = 'absolute' (EUR)
+  equityPct: number; // genutzt wenn equityMode = 'percent' (% von Kaufpreis + Sanierungskosten)
+  equityAbsolute: number; // genutzt wenn equityMode = 'absolute' (EUR fuer Kaufpreis + Sanierungskosten)
   sollzinsPct: number; // p. a.
   tilgungPct: number; // anfaengliche Tilgung p. a.
   zinsbindungJahre: number;

@@ -12,6 +12,7 @@ import {
   loanAmount,
 } from '../engine/derive';
 import { runProjection } from '../engine/projection';
+import { buildAmortizationSchedule } from '../engine/financing';
 import { calculateMetrics } from '../engine/metrics';
 import { calculateExit } from '../engine/exit';
 import { analyzeHoldingPeriods } from '../engine/holding';
@@ -99,6 +100,19 @@ function bodenwertPctFromRichtwert(kaufpreis: number, wohnflaeche: number, richt
   return clampPercent(((Math.max(0, richtwertProSqm) * wohnflaeche) / kaufpreis) * 100);
 }
 
+function formatLoanTerm(months: number): string {
+  if (months === 0) return 'kein Darlehen';
+  if (!Number.isFinite(months)) return 'keine Volltilgung im Modellzeitraum';
+
+  const roundedMonths = Math.max(0, Math.round(months));
+  const years = Math.floor(roundedMonths / 12);
+  const remainingMonths = roundedMonths % 12;
+
+  if (remainingMonths === 0) return `${formatNumber(years, 0)} Jahre`;
+  if (years === 0) return `${formatNumber(remainingMonths, 0)} Monate`;
+  return `${formatNumber(years, 0)} Jahre ${formatNumber(remainingMonths, 0)} Monate`;
+}
+
 export function App() {
   const active = useScenarioStore((s) => s.active);
   const saved = useScenarioStore((s) => s.saved);
@@ -146,6 +160,16 @@ export function App() {
   // Compute live calculations
   const proj = useMemo(() => runProjection(active), [active]);
   const cashBreakdown = useMemo(() => cashInvestmentBreakdown(active), [active]);
+  const financingSchedule = useMemo(() => buildAmortizationSchedule({
+    loanAmount: loanAmount(active),
+    sollzinsPct: active.finanzierung.sollzinsPct,
+    tilgungPct: active.finanzierung.tilgungPct,
+    zinsbindungJahre: active.finanzierung.zinsbindungJahre,
+    anschlusszinsPct: active.finanzierung.anschlusszinsPct,
+    anschlussTilgungPct: active.finanzierung.anschlussTilgungPct,
+    sondertilgungProJahr: active.finanzierung.sondertilgungProJahr,
+    haltedauerJahre: active.exit.haltedauerJahre,
+  }), [active]);
   const effectiveBodenwertPct = useMemo(() => effectiveBodenwertAnteilPct(active), [active]);
   const effectiveBodenwert = useMemo(() => landValueAmount(active), [active]);
   const currentSollzins = sensSollzins !== null ? sensSollzins : active.finanzierung.sollzinsPct;
@@ -1229,6 +1253,10 @@ export function App() {
                     <div className="flex justify-between">
                       <span>Darlehensbetrag:</span>
                       <span className="font-bold text-slate-700">{formatEUR(loanAmount(active))}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span>Darlehenslaufzeit:</span>
+                      <span className="font-bold text-slate-700 text-right">{formatLoanTerm(financingSchedule.laufzeitMonate)}</span>
                     </div>
                     <p className="pt-1 text-[10px] leading-snug text-slate-400">
                       Eigenkapital reduziert Kaufpreis und Sanierung direkt. Kaufnebenkosten werden separat bar gezahlt oder anteilig fremdfinanziert.

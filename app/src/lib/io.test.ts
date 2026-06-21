@@ -138,6 +138,59 @@ describe('io', () => {
     );
   });
 
+  it('should import old scenarios without Bodenrichtwert mode as percent mode', () => {
+    const sc = createDefaultScenario();
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const objekt = parsed.objekt as Record<string, unknown>;
+    delete objekt.bodenwertMode;
+    delete objekt.bodenrichtwertProSqm;
+
+    const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
+
+    expect(imported.objekt.bodenwertMode).toBe('percent');
+    expect(imported.objekt.bodenwertAnteilPct).toBe(20);
+    expect(imported.objekt.bodenrichtwertProSqm).toBeCloseTo((300000 * 0.2) / 70, 5);
+  });
+
+  it('should preserve and validate configured Bodenrichtwert per sqm on import', () => {
+    const sc = createDefaultScenario({
+      objekt: {
+        kaufpreis: 300000,
+        wohnflaeche: 70,
+        fertigstellungsjahr: 1995,
+        bundesland: 'NW',
+        objektTyp: 'bestand',
+        bodenwertMode: 'perSqm',
+        bodenwertAnteilPct: 23.333333,
+        bodenrichtwertProSqm: 1000,
+        sanierungskosten: 0,
+      },
+    });
+
+    const imported = importScenarios(exportScenario(sc)) as Scenario;
+
+    expect(imported.objekt.bodenwertMode).toBe('perSqm');
+    expect(imported.objekt.bodenrichtwertProSqm).toBe(1000);
+  });
+
+  it('should reject invalid Bodenrichtwert mode and negative sqm values on import', () => {
+    const sc = createDefaultScenario();
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const objekt = parsed.objekt as Record<string, unknown>;
+    objekt.bodenwertMode = 'invalid';
+
+    expect(() => importScenarios(JSON.stringify(parsed))).toThrow(
+      'bodenwertMode hat einen ungültigen Wert.'
+    );
+
+    objekt.bodenwertMode = 'perSqm';
+    objekt.bodenrichtwertProSqm = -1;
+
+    expect(() => importScenarios(JSON.stringify(parsed))).toThrow(
+      'bodenrichtwertProSqm muss eine Zahl zwischen 0 und 9007199254740991 sein.'
+    );
+  });
+
   it('should import old scenarios without Anschlusstilgung as the legacy default', () => {
     const sc = createDefaultScenario();
     const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;

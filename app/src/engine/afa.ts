@@ -1,5 +1,5 @@
 import { Scenario } from './types';
-import { knkAmount } from './derive';
+import { effectiveBodenwertAnteilPct, knkAmount } from './derive';
 
 export interface AfaYearProjection {
   jahr: number;
@@ -19,7 +19,7 @@ export function projectAfa(scenario: Scenario, years: number): AfaYearProjection
   if (years <= 0) return result;
 
   const knk = knkAmount(scenario);
-  const buildingPct = 1 - scenario.objekt.bodenwertAnteilPct / 100;
+  const buildingPct = 1 - effectiveBodenwertAnteilPct(scenario) / 100;
   
   // Altbausubstanz / building basis (purchase price + side costs allocated by building share)
   const buildingBasis = (scenario.objekt.kaufpreis + knk) * buildingPct;

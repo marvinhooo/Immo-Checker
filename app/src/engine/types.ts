@@ -12,6 +12,7 @@ export type ObjektTyp = 'bestand' | 'neubau' | 'denkmal';
 /** AfA-Verfahren: linear (nach Baujahr), degressiv 5 %, Sonder-AfA §7b, Denkmal-AfA §7i. */
 export type AfaModus = 'linear' | 'degressiv' | 'sonder7b' | 'denkmal7i';
 
+export type BodenwertMode = 'percent' | 'perSqm';
 export type EquityMode = 'percent' | 'absolute';
 export type RentMode = 'perMonth' | 'perSqm';
 export type MaintenanceMode = 'perSqm' | 'percentRent' | 'absolute';
@@ -35,7 +36,9 @@ export interface ObjektInput {
   fertigstellungsjahr: number; // Baujahr / Fertigstellung (steuert lineare AfA)
   bundesland: Bundesland;
   objektTyp: ObjektTyp;
+  bodenwertMode: BodenwertMode; // Prozent direkt oder Bodenrichtwert EUR/m2
   bodenwertAnteilPct: number; // % des Kaufpreises auf Grund und Boden (NICHT abschreibbar)
+  bodenrichtwertProSqm: number; // EUR/m2, wird ueber Wohnflaeche in % des Kaufpreises umgerechnet
   sanierungskosten: number; // EUR, Denkmal-/Modernisierungs-Topf (§7i)
 }
 

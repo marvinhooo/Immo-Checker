@@ -5,8 +5,10 @@ import {
   knkAmount,
   totalInvest,
   equityAmount,
+  effectiveBodenwertAnteilPct,
   cashInvestment,
   cashInvestmentBreakdown,
+  landValueAmount,
   unfinancedKnkCashGap,
   loanAmount,
 } from '../engine/derive';
@@ -79,6 +81,18 @@ describe('derive helpers', () => {
     expect(breakdown.additionalCashForUnfinancedKnk).toBe(0);
     expect(breakdown.equityAvailableAfterKnk).toBeCloseTo(60000, 2);
     expect(breakdown.totalCashInvestment).toBeCloseTo(94710, 2);
+  });
+
+  it('derives the effective land share from Bodenrichtwert per sqm', () => {
+    const s = createDefaultScenario();
+    s.objekt.kaufpreis = 300000;
+    s.objekt.wohnflaeche = 70;
+    s.objekt.bodenwertMode = 'perSqm';
+    s.objekt.bodenrichtwertProSqm = 1000;
+    s.objekt.bodenwertAnteilPct = 0;
+
+    expect(landValueAmount(s)).toBeCloseTo(70000, 2);
+    expect(effectiveBodenwertAnteilPct(s)).toBeCloseTo(23.333333, 5);
   });
 
   it('caps loan at 0 for 100% equity', () => {

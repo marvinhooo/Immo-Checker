@@ -28,7 +28,9 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
       fertigstellungsjahr,
       bundesland,
       objektTyp: 'bestand',
+      bodenwertMode: 'percent',
       bodenwertAnteilPct: 20,
+      bodenrichtwertProSqm: (300000 * 0.2) / 70,
       sanierungskosten: 0,
     },
     knk: {

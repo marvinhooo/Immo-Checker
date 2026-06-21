@@ -54,6 +54,40 @@ describe('afa engine - projectAfa', () => {
     expect(projection[9].restwert).toBeCloseTo(264000 - 5280 * 10, 2);
   });
 
+  it('should calculate AfA basis from Bodenrichtwert per sqm', () => {
+    // Bodenrichtwert: 1,000 EUR/m2 * 70 m2 = 70,000 EUR.
+    // Bodenwertanteil am Kaufpreis: 70,000 / 300,000 = 23.3333%.
+    // Building Basis = 330,000 * 76.6667% = 253,000.
+    const scenario = createDefaultScenario({
+      objekt: {
+        kaufpreis: 300000,
+        wohnflaeche: 70,
+        fertigstellungsjahr: 1995,
+        bundesland: 'NW',
+        objektTyp: 'bestand',
+        bodenwertMode: 'perSqm',
+        bodenwertAnteilPct: 0,
+        bodenrichtwertProSqm: 1000,
+        sanierungskosten: 0,
+      },
+      knk: {
+        grestPct: 5,
+        notarPct: 1.5,
+        maklerPct: 3.5,
+        mitfinanzieren: false,
+      },
+      afa: {
+        modus: 'linear',
+        linearSatzPct: 2.0,
+      }
+    });
+
+    const projection = projectAfa(scenario, 1);
+
+    expect(projection[0].afaAmount).toBeCloseTo(5060, 2);
+    expect(projection[0].restwert).toBeCloseTo(253000 - 5060, 2);
+  });
+
   it('should calculate degressive AfA with switch to linear correctly', () => {
     // Building basis = 264,000. Total lifetime = 50. Degressive rate = 5%.
     const scenario = createDefaultScenario({

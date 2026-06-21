@@ -91,7 +91,7 @@ Allgemeine Arbeitsregeln:
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
 ## Handover Naechster Thread (Stand: 2026-06-21)
-- Implementiert und verifiziert: Stories 0 bis 13. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (127/127 Tests).
+- Implementiert und verifiziert: Stories 0 bis 13. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (132/132 Tests).
 - Offener Fokus: Keine offenen Stories.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
@@ -154,7 +154,7 @@ Prioritaet: Hoch | Status: DONE (2026-06-20)
 
 Anforderungen:
 - Vollstaendiges Eingabe-Datenmodell als TypeScript-Typen in `src/engine/types.ts`. Mindestens:
-  - Objekt: Kaufpreis, Wohnflaeche m2, Baujahr/Fertigstellungsjahr, Bundesland, Objekttyp (Bestand/Neubau/Denkmal), Bodenwertanteil %, Sanierungskosten (Denkmal-Topf).
+  - Objekt: Kaufpreis, Wohnflaeche m2, Baujahr/Fertigstellungsjahr, Bundesland, Objekttyp (Bestand/Neubau/Denkmal), Bodenwertanteil % oder Bodenrichtwert EUR/m2 Wohnflaeche, Sanierungskosten (Denkmal-Topf).
   - Kaufnebenkosten: GrESt % (aus Bundesland vorbelegt, editierbar), Notar/Grundbuch %, Makler %, Flag "KNK fremdfinanzieren" (Default: nein) und optionaler fremdfinanzierter KNK-Anteil %.
   - Finanzierung: Eigenkapital (% ODER absolut, umschaltbar) fuer Kaufpreis + Sanierungskosten ohne KNK, Darlehensbetrag (abgeleitet), Sollzins %, anfaengliche Tilgung %, Zinsbindung (Jahre), Anschlusszins % (nach Zinsbindung), jaehrliche Sondertilgung (Betrag oder %), optional Disagio.
   - Miete: Kaltmiete (EUR/Monat oder EUR/m2), Leerstand/Mietausfallwagnis %, Mietsteigerungs-Szenario (flexible Zeitreihe, s. Story 3).

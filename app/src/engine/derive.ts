@@ -17,6 +17,23 @@ export function knkAmount(s: Scenario): number {
   return (s.objekt.kaufpreis * (grestPct + notarPct + maklerPct)) / 100;
 }
 
+/** Effektiver Bodenwert in EUR aus Prozent oder Bodenrichtwert pro m2. */
+export function landValueAmount(s: Scenario): number {
+  if (s.objekt.bodenwertMode === 'perSqm') {
+    return Math.min(
+      s.objekt.kaufpreis,
+      Math.max(0, s.objekt.bodenrichtwertProSqm * s.objekt.wohnflaeche)
+    );
+  }
+  return (s.objekt.kaufpreis * Math.min(100, Math.max(0, s.objekt.bodenwertAnteilPct))) / 100;
+}
+
+/** Effektiver Bodenwertanteil am Kaufpreis in %. */
+export function effectiveBodenwertAnteilPct(s: Scenario): number {
+  if (s.objekt.kaufpreis <= 0) return 0;
+  return (landValueAmount(s) / s.objekt.kaufpreis) * 100;
+}
+
 /** Gesamtinvestition = Kaufpreis + Kaufnebenkosten + Sanierungskosten (Denkmal-Topf). */
 export function totalInvest(s: Scenario): number {
   return s.objekt.kaufpreis + knkAmount(s) + s.objekt.sanierungskosten;

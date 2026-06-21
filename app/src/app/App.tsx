@@ -7,6 +7,8 @@ import {
   knkAmount,
   totalInvest,
   cashInvestmentBreakdown,
+  effectiveBodenwertAnteilPct,
+  landValueAmount,
   loanAmount,
 } from '../engine/derive';
 import { runProjection } from '../engine/projection';
@@ -41,7 +43,7 @@ import { Tabs } from '../components/ui/Tabs';
 
 // Constants and Helpers
 import { BUNDESLAND_LABELS, GREST_BY_BUNDESLAND } from '../engine/constants';
-import type { Bundesland, ObjektTyp, AfaModus, EquityMode, RentMode, MaintenanceMode, TaxMode, Veranlagung, IncreaseRule } from '../engine/types';
+import type { BodenwertMode, Bundesland, ObjektTyp, AfaModus, EquityMode, RentMode, MaintenanceMode, TaxMode, Veranlagung, IncreaseRule } from '../engine/types';
 import { marginalRate } from '../engine/tax';
 import { projectSeries } from '../engine/timeline';
 import { createDefaultScenario } from '../engine/defaults';
@@ -80,6 +82,21 @@ function clampTimelinePercent(percent: number): number {
 function clampIntegerInRange(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, value));
+}
+
+function bodenrichtwertFromPct(kaufpreis: number, wohnflaeche: number, pct: number): number {
+  if (wohnflaeche <= 0) return 0;
+  return (kaufpreis * (clampPercent(pct) / 100)) / wohnflaeche;
+}
+
+function bodenwertPctFromRichtwert(kaufpreis: number, wohnflaeche: number, richtwertProSqm: number): number {
+  if (kaufpreis <= 0) return 0;
+  return clampPercent(((Math.max(0, richtwertProSqm) * wohnflaeche) / kaufpreis) * 100);
 }
 
 export function App() {
@@ -129,6 +146,8 @@ export function App() {
   // Compute live calculations
   const proj = useMemo(() => runProjection(active), [active]);
   const cashBreakdown = useMemo(() => cashInvestmentBreakdown(active), [active]);
+  const effectiveBodenwertPct = useMemo(() => effectiveBodenwertAnteilPct(active), [active]);
+  const effectiveBodenwert = useMemo(() => landValueAmount(active), [active]);
   const currentSollzins = sensSollzins !== null ? sensSollzins : active.finanzierung.sollzinsPct;
   const currentLeerstand = sensLeerstand !== null ? sensLeerstand : active.miete.leerstandPct;
   const baseWertRule = active.wertentwicklung.szenario.find(r => r.kind === 'rate');
@@ -797,14 +816,44 @@ export function App() {
                     value={active.objekt.kaufpreis}
                     suffix="EUR"
                     min={1}
-                    onChange={(val) => updateActive((d) => { d.objekt.kaufpreis = val; })}
+                    onChange={(val) => updateActive((d) => {
+                      d.objekt.kaufpreis = val;
+                      if (d.objekt.bodenwertMode === 'perSqm') {
+                        d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
+                          val,
+                          d.objekt.wohnflaeche,
+                          d.objekt.bodenrichtwertProSqm
+                        );
+                      } else {
+                        d.objekt.bodenrichtwertProSqm = bodenrichtwertFromPct(
+                          val,
+                          d.objekt.wohnflaeche,
+                          d.objekt.bodenwertAnteilPct
+                        );
+                      }
+                    })}
                   />
                   <div className="grid grid-cols-2 gap-4">
                     <NumberInput
                       label="Wohnfläche (m²)"
                       value={active.objekt.wohnflaeche}
                       min={1}
-                      onChange={(val) => updateActive((d) => { d.objekt.wohnflaeche = val; })}
+                      onChange={(val) => updateActive((d) => {
+                        d.objekt.wohnflaeche = val;
+                        if (d.objekt.bodenwertMode === 'perSqm') {
+                          d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
+                            d.objekt.kaufpreis,
+                            val,
+                            d.objekt.bodenrichtwertProSqm
+                          );
+                        } else {
+                          d.objekt.bodenrichtwertProSqm = bodenrichtwertFromPct(
+                            d.objekt.kaufpreis,
+                            val,
+                            d.objekt.bodenwertAnteilPct
+                          );
+                        }
+                      })}
                     />
                     <NumberInput
                       label="Baujahr / Fertigstellung"
@@ -842,17 +891,70 @@ export function App() {
                         { value: 'denkmal', label: 'Denkmal' },
                       ]}
                     />
-                    <div className="flex flex-col justify-end">
-                      <Slider
-                        label="Bodenwertanteil (%)"
-                        value={active.objekt.bodenwertAnteilPct}
-                        onChange={(val) => updateActive((d) => { d.objekt.bodenwertAnteilPct = val; })}
-                        min={0}
-                        max={100}
-                        suffix="%"
+                    <div className="flex flex-col justify-end space-y-2">
+                      <Tabs
+                        activeTab={active.objekt.bodenwertMode}
+                        onChange={(id) => updateActive((d) => {
+                          const mode = id as BodenwertMode;
+                          d.objekt.bodenwertMode = mode;
+                          if (mode === 'perSqm') {
+                            d.objekt.bodenrichtwertProSqm = bodenrichtwertFromPct(
+                              d.objekt.kaufpreis,
+                              d.objekt.wohnflaeche,
+                              d.objekt.bodenwertAnteilPct
+                            );
+                          } else {
+                            d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
+                              d.objekt.kaufpreis,
+                              d.objekt.wohnflaeche,
+                              d.objekt.bodenrichtwertProSqm
+                            );
+                          }
+                        })}
+                        tabs={[
+                          { id: 'percent', label: 'Boden %' },
+                          { id: 'perSqm', label: 'EUR/m²' },
+                        ]}
                       />
+                      {active.objekt.bodenwertMode === 'percent' ? (
+                        <Slider
+                          label="Bodenwertanteil (%)"
+                          value={active.objekt.bodenwertAnteilPct}
+                          onChange={(val) => updateActive((d) => {
+                            d.objekt.bodenwertAnteilPct = val;
+                            d.objekt.bodenrichtwertProSqm = bodenrichtwertFromPct(
+                              d.objekt.kaufpreis,
+                              d.objekt.wohnflaeche,
+                              val
+                            );
+                          })}
+                          min={0}
+                          max={100}
+                          suffix="%"
+                        />
+                      ) : (
+                        <NumberInput
+                          label="Bodenrichtwert (€/m²)"
+                          value={active.objekt.bodenrichtwertProSqm}
+                          suffix="EUR/m²"
+                          min={0}
+                          onChange={(val) => updateActive((d) => {
+                            d.objekt.bodenrichtwertProSqm = val;
+                            d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
+                              d.objekt.kaufpreis,
+                              d.objekt.wohnflaeche,
+                              val
+                            );
+                          })}
+                        />
+                      )}
+                      <div className="rounded-lg bg-slate-50 px-3 py-2 text-[10px] font-medium text-slate-500">
+                        Bodenwert: <strong className="text-slate-700">{formatEUR(effectiveBodenwert)}</strong>
+                        {' '}= <strong className="text-slate-700">{formatPercent(effectiveBodenwertPct, 2)}</strong> vom Kaufpreis.
+                      </div>
                       <p className="text-[10px] text-slate-400 mt-1 leading-snug">
                         Anteil des Grundstückswerts am Kaufpreis — nur das Gebäude ist abschreibbar (AfA).
+                        Im EUR/m²-Modus wird der Bodenrichtwert mit der Wohnfläche multipliziert.
                         Nachschlagen im <strong>Bodenrichtwert-Informationssystem (BORIS)</strong> Ihres Bundeslandes
                         oder im Kaufvertrag. Richtwerte: Großstadt 30–50 %, Stadtrand 20–30 %, ländlich 10–20 %.
                       </p>

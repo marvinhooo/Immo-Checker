@@ -20,6 +20,9 @@ describe('createDefaultScenario', () => {
     expect(scenario.objekt.kaufpreis).toBe(500000);
     expect(scenario.objekt.wohnflaeche).toBe(70);
     expect(scenario.objekt.bundesland).toBe('NW');
+    expect(scenario.objekt.bodenwertMode).toBe('percent');
+    expect(scenario.objekt.bodenwertAnteilPct).toBe(20);
+    expect(scenario.objekt.bodenrichtwertProSqm).toBeCloseTo(857.142857, 5);
     expect(scenario.finanzierung.sollzinsPct).toBe(4.2);
     expect(scenario.finanzierung.tilgungPct).toBe(2);
     expect(scenario.miete.steigerungen).toEqual([]);

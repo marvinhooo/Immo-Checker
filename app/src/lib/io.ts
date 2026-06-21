@@ -3,6 +3,7 @@ import { ProjectionYear } from '../engine/projection';
 
 const BUNDESLAENDER = ['BW', 'BY', 'BE', 'BB', 'HB', 'HH', 'HE', 'MV', 'NI', 'NW', 'RP', 'SL', 'SN', 'ST', 'SH', 'TH'] as const;
 const OBJEKT_TYPEN = ['bestand', 'neubau', 'denkmal'] as const;
+const BODENWERT_MODES = ['percent', 'perSqm'] as const;
 const EQUITY_MODES = ['percent', 'absolute'] as const;
 const RENT_MODES = ['perMonth', 'perSqm'] as const;
 const MAINTENANCE_MODES = ['perSqm', 'percentRent', 'absolute'] as const;
@@ -123,12 +124,22 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   }
 
   const objekt = requireSection(s, 'objekt', prefix);
-  requireNumberInRange(objekt, 'kaufpreis', 1, Number.MAX_SAFE_INTEGER, prefix);
-  requireNumberInRange(objekt, 'wohnflaeche', 1, Number.MAX_SAFE_INTEGER, prefix);
+  const kaufpreis = requireNumberInRange(objekt, 'kaufpreis', 1, Number.MAX_SAFE_INTEGER, prefix);
+  const wohnflaeche = requireNumberInRange(objekt, 'wohnflaeche', 1, Number.MAX_SAFE_INTEGER, prefix);
   requireIntegerInRange(objekt, 'fertigstellungsjahr', 1, 2100, prefix);
   requireEnum(objekt, 'bundesland', BUNDESLAENDER, prefix);
   requireEnum(objekt, 'objektTyp', OBJEKT_TYPEN, prefix);
-  requireNumberInRange(objekt, 'bodenwertAnteilPct', 0, 100, prefix);
+  const bodenwertAnteilPct = requireNumberInRange(objekt, 'bodenwertAnteilPct', 0, 100, prefix);
+  if (objekt.bodenwertMode === undefined || objekt.bodenwertMode === null) {
+    objekt.bodenwertMode = 'percent';
+  } else {
+    requireEnum(objekt, 'bodenwertMode', BODENWERT_MODES, prefix);
+  }
+  if (objekt.bodenrichtwertProSqm === undefined || objekt.bodenrichtwertProSqm === null) {
+    objekt.bodenrichtwertProSqm = (kaufpreis * (bodenwertAnteilPct / 100)) / wohnflaeche;
+  } else {
+    requireNumberInRange(objekt, 'bodenrichtwertProSqm', 0, Number.MAX_SAFE_INTEGER, prefix);
+  }
   requireNumberInRange(objekt, 'sanierungskosten', 0, Number.MAX_SAFE_INTEGER, prefix);
 
   const knk = requireSection(s, 'knk', prefix);

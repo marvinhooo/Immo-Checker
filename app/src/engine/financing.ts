@@ -93,10 +93,13 @@ export function buildAmortizationSchedule(input: AmortizationInput): Amortizatio
     const isWithinZinsbindung = currentYear <= zinsbindungJahre;
     const activeRatePct = isWithinZinsbindung ? sollzinsPct : anschlusszinsPct;
 
-    // Recalculate annuity at the beginning of post-zinsbindung period
+    // Recalculate annuity at the beginning of the post-zinsbindung period.
+    // Keep at least the previous monthly payment so higher initial tilgung still shortens
+    // the total loan term instead of being neutralized by a smaller refinancing base.
     if (currentMonth === zinsbindungJahre * 12 + 1) {
       const effectiveTilgung = anschlussTilgungPct ?? tilgungPct;
-      monthlyAnnuity = (currentDebt * (activeRatePct + effectiveTilgung)) / 100 / 12;
+      const refinancingAnnuity = (currentDebt * (activeRatePct + effectiveTilgung)) / 100 / 12;
+      monthlyAnnuity = Math.max(monthlyAnnuity, refinancingAnnuity);
     }
 
     // Calculate monthly interest

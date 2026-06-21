@@ -21,7 +21,7 @@ describe('buildAmortizationSchedule', () => {
       haltedauerJahre: 15,
     });
 
-    expect(result.years).toHaveLength(37);
+    expect(result.years).toHaveLength(30);
     
     // Year 1 checks
     const y1 = result.years[0];
@@ -45,7 +45,7 @@ describe('buildAmortizationSchedule', () => {
 
     // Haltedauer check (Year 15)
     expect(result.restschuldHaltedauerEnde).toBe(result.years[14].endbestand);
-    expect(result.restschuldHaltedauerEnde).toBeCloseTo(156713, 0);
+    expect(result.restschuldHaltedauerEnde).toBeCloseTo(145257, 0);
     
     // Total interest check
     expect(result.kumulierteZinsen).toBeGreaterThan(0);
@@ -162,6 +162,33 @@ describe('buildAmortizationSchedule', () => {
     expect(higherAnschlussTilgung.years[5].tilgung).toBeGreaterThan(sameTilgung.years[5].tilgung);
     expect(higherAnschlussTilgung.years[11].endbestand).toBeLessThan(sameTilgung.years[11].endbestand);
     expect(higherAnschlussTilgung.laufzeitMonate).toBeLessThan(sameTilgung.laufzeitMonate);
+  });
+
+  it('lets a higher initial tilgung shorten the total term even with configured Anschlusstilgung', () => {
+    const lowInitialTilgung = buildAmortizationSchedule({
+      loanAmount: 200000,
+      sollzinsPct: 3.0,
+      tilgungPct: 1.0,
+      zinsbindungJahre: 10,
+      anschlussTilgungPct: 2.0,
+      anschlusszinsPct: 3.0,
+      sondertilgungProJahr: 0,
+      haltedauerJahre: 20,
+    });
+
+    const highInitialTilgung = buildAmortizationSchedule({
+      loanAmount: 200000,
+      sollzinsPct: 3.0,
+      tilgungPct: 4.0,
+      zinsbindungJahre: 10,
+      anschlussTilgungPct: 2.0,
+      anschlusszinsPct: 3.0,
+      sondertilgungProJahr: 0,
+      haltedauerJahre: 20,
+    });
+
+    expect(highInitialTilgung.restschuldZinsbindungEnde).toBeLessThan(lowInitialTilgung.restschuldZinsbindungEnde);
+    expect(highInitialTilgung.laufzeitMonate).toBeLessThan(lowInitialTilgung.laufzeitMonate);
   });
 
   it('starts amortizing after the Zinsbindung when only Anschlusstilgung is set', () => {

@@ -41,11 +41,12 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       set({ profile: null });
       return;
     }
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id, is_admin, approved, created_at')
       .eq('id', user.id)
       .single();
+    if (error) console.error('Profile fetch error:', error.message);
     set({ profile: data ?? null });
   },
 

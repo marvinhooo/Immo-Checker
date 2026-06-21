@@ -35,25 +35,29 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- 3. RLS aktivieren
+-- 3. Helper: Admin-Check ohne RLS-Rekursion
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- 4. RLS aktivieren
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scenarios ENABLE ROW LEVEL SECURITY;
 
--- 4. RLS Policies: Profiles
+-- 5. RLS Policies: Profiles
 CREATE POLICY "Users read own profile" ON public.profiles
   FOR SELECT USING (auth.uid() = id);
 
 CREATE POLICY "Admins read all profiles" ON public.profiles
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
-  );
+  FOR SELECT USING (public.is_admin());
 
 CREATE POLICY "Admins update profiles" ON public.profiles
-  FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
-  );
+  FOR UPDATE USING (public.is_admin());
 
--- 5. RLS Policies: Scenarios
+-- 6. RLS Policies: Scenarios
 CREATE POLICY "Users read own scenarios" ON public.scenarios
   FOR SELECT USING (auth.uid() = user_id);
 
@@ -67,9 +71,7 @@ CREATE POLICY "Users delete own scenarios" ON public.scenarios
   FOR DELETE USING (auth.uid() = user_id);
 
 CREATE POLICY "Admins read all scenarios" ON public.scenarios
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
-  );
+  FOR SELECT USING (public.is_admin());
 
 -- 6. Admin-Funktionen
 CREATE OR REPLACE FUNCTION public.admin_list_users()

@@ -101,9 +101,6 @@ CREATE POLICY "Users update own scenarios" ON public.scenarios
 CREATE POLICY "Users delete own scenarios" ON public.scenarios
   FOR DELETE USING (auth.uid() = user_id);
 
-CREATE POLICY "Admins read all scenarios" ON public.scenarios
-  FOR SELECT USING (public.is_admin());
-
 -- 8. Admin-Funktionen
 CREATE OR REPLACE FUNCTION public.admin_list_users()
 RETURNS TABLE (

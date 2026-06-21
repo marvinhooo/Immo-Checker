@@ -26,6 +26,7 @@ import {
   formatEUR,
   formatPercent,
   formatNumber,
+  parseNumber,
 } from '../lib/format';
 import {
   exportScenario,
@@ -113,12 +114,87 @@ function formatLoanTerm(months: number): string {
   return `${formatNumber(years, 0)} Jahre ${formatNumber(remainingMonths, 0)} Monate`;
 }
 
+function formatRuleInputValue(value: number): string {
+  if (!Number.isFinite(value)) return '';
+  return String(value).replace('.', ',');
+}
+
+function constrainRuleInput(value: number, min?: number, max?: number): number {
+  let constrained = Number.isFinite(value) ? value : 0;
+  if (min !== undefined && constrained < min) constrained = min;
+  if (max !== undefined && constrained > max) constrained = max;
+  return constrained;
+}
+
+interface RuleNumberInputProps {
+  value: number;
+  onChange: (value: number) => void;
+  min?: number;
+  max?: number;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
+  className: string;
+  ariaLabel: string;
+}
+
+function RuleNumberInput({
+  value,
+  onChange,
+  min,
+  max,
+  inputMode = 'decimal',
+  className,
+  ariaLabel,
+}: RuleNumberInputProps) {
+  const [isFocused, setIsFocused] = useState(false);
+  const [localValue, setLocalValue] = useState(formatRuleInputValue(value));
+
+  useEffect(() => {
+    if (!isFocused) {
+      setLocalValue(formatRuleInputValue(value));
+    }
+  }, [isFocused, value]);
+
+  const commit = (raw: string) => {
+    const next = raw.trim() === ''
+      ? (min ?? 0)
+      : constrainRuleInput(parseNumber(raw), min, max);
+    onChange(next);
+    return next;
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode={inputMode}
+      aria-label={ariaLabel}
+      value={localValue}
+      onFocus={(e) => {
+        setIsFocused(true);
+        e.currentTarget.select();
+      }}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setLocalValue(raw);
+        if (raw.trim() === '' || /[-.,]$/.test(raw.trim())) return;
+        onChange(constrainRuleInput(parseNumber(raw), min, max));
+      }}
+      onBlur={() => {
+        const next = commit(localValue);
+        setIsFocused(false);
+        setLocalValue(formatRuleInputValue(next));
+      }}
+      className={className}
+    />
+  );
+}
+
 export function App() {
   const active = useScenarioStore((s) => s.active);
   const saved = useScenarioStore((s) => s.saved);
   const updateActive = useScenarioStore((s) => s.updateActive);
   const resetActive = useScenarioStore((s) => s.resetActive);
   const loadSaved = useScenarioStore((s) => s.loadSaved);
+  const scenarioOwnerUserId = useScenarioStore((s) => s.ownerUserId);
   const isSyncing = useScenarioStore((s) => s.isSyncing);
   const loadFromCloud = useScenarioStore((s) => s.loadFromCloud);
 
@@ -542,6 +618,17 @@ export function App() {
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  if (!user?.id || scenarioOwnerUserId !== user.id || isSyncing) {
+    return (
+      <div className="min-h-screen bg-slate-50/50 flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="h-8 w-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm font-medium text-slate-500">Szenarien werden geladen...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -1765,12 +1852,13 @@ export function App() {
                           {active.wertentwicklung.szenario.map((rule) => (
                             <tr key={rule.id} className="hover:bg-slate-50/50">
                               <td className="px-3 py-1.5">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max="50"
+                                <RuleNumberInput
                                   value={rule.fromYear}
-                                  onChange={(e) => handleUpdateWertRule(rule.id, { fromYear: parseInt(e.target.value) || 1 })}
+                                  min={1}
+                                  max={50}
+                                  inputMode="numeric"
+                                  ariaLabel="Wertentwicklung ab Jahr"
+                                  onChange={(val) => handleUpdateWertRule(rule.id, { fromYear: val })}
                                   className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs text-center focus:border-violet-500 focus:outline-none"
                                 />
                               </td>
@@ -1793,14 +1881,13 @@ export function App() {
                               </td>
                               <td className="px-3 py-1.5">
                                 <div className="relative flex items-center">
-                                  <input
-                                    type="number"
-                                    min="-100"
-                                    max="100"
-                                    step="0.1"
+                                  <RuleNumberInput
                                     value={rule.kind === 'rate' ? rule.percentPerYear : rule.percent}
-                                    onChange={(e) => {
-                                      const val = parseFloat(e.target.value) || 0;
+                                    min={-100}
+                                    max={100}
+                                    inputMode="decimal"
+                                    ariaLabel="Wertentwicklung Prozentwert"
+                                    onChange={(val) => {
                                       if (rule.kind === 'rate') {
                                         handleUpdateWertRule(rule.id, { percentPerYear: val });
                                       } else {

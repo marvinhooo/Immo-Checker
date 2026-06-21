@@ -57,6 +57,8 @@ DROP POLICY IF EXISTS "Admins update app settings" ON public.app_settings;
 CREATE POLICY "Admins update app settings" ON public.app_settings
   FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());
 
+DROP POLICY IF EXISTS "Admins read all scenarios" ON public.scenarios;
+
 CREATE OR REPLACE FUNCTION public.admin_list_users()
 RETURNS TABLE (
   user_id UUID,

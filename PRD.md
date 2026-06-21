@@ -103,6 +103,7 @@ Allgemeine Arbeitsregeln:
 ## Nachtraegliche Auth/Admin-Erweiterung (Stand: 2026-06-21)
 - Die Berechnungslogik bleibt client-seitig. Anmeldung, Profilstatus und optionale Cloud-Szenario-Synchronisation laufen ueber Supabase Auth, `profiles` und `scenarios`.
 - Admins koennen User im Admin-Dashboard genehmigen, sperren, loeschen, Passwort-Reset-Mails senden und die globale Einstellung `Neue Accounts brauchen Admin-Freigabe` an-/ausschalten.
+- Szenarien sind strikt accountgebunden: Der UI-State wird beim Account-Wechsel sofort auf den neuen `ownerUserId` umgestellt und fremde/in-flight Cloud-Antworten duerfen den aktuellen Account-State nicht ueberschreiben. Admins haben ueber normale Tabellenrechte keinen Lesezugriff auf fremde Szenario-Inhalte.
 - Bestehende Supabase-Instanzen muessen fuer Auth/Admin-Fixes die idempotente Migration `supabase-auth-admin-migration.sql` ausfuehren; Neuinstallationen nutzen `supabase-setup.sql`.
 - Auth-E-Mail-Links muessen auf die Vite-App-Basis zeigen, z. B. `/Immo-Checker/`, damit statische Hosts nicht mit 404 auf Unterrouten antworten.
 

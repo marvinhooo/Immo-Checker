@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useScenarioStore } from './scenarioStore';
 import { createDefaultScenario } from '../engine/defaults';
+import { pullScenarios } from '../lib/sync';
 import {
   knkAmount,
   totalInvest,
@@ -13,8 +14,23 @@ import {
   loanAmount,
 } from '../engine/derive';
 
+vi.mock('../lib/sync', () => ({
+  pullScenarios: vi.fn(),
+  pushSingleScenario: vi.fn(),
+  deleteRemoteScenario: vi.fn(),
+}));
+
+const pullScenariosMock = vi.mocked(pullScenarios);
+
 beforeEach(() => {
-  useScenarioStore.setState({ active: createDefaultScenario(), saved: [] });
+  vi.clearAllMocks();
+  useScenarioStore.setState({
+    ownerUserId: null,
+    active: createDefaultScenario(),
+    saved: [],
+    isSyncing: false,
+    syncError: null,
+  });
 });
 
 describe('scenarioStore', () => {
@@ -62,6 +78,58 @@ describe('scenarioStore', () => {
     expect(useScenarioStore.getState().active.objekt.kaufpreis).toBe(300000);
   });
 
+  it('clears previous account state before loading cloud scenarios', async () => {
+    const oldScenario = createDefaultScenario({ name: 'Account A' });
+    const ownScenario = createDefaultScenario({ name: 'Account B' });
+    ownScenario.id = 'account-b-scenario';
+
+    useScenarioStore.setState({
+      ownerUserId: 'account-a',
+      active: oldScenario,
+      saved: [oldScenario],
+      isSyncing: false,
+      syncError: null,
+    });
+    pullScenariosMock.mockResolvedValueOnce([ownScenario]);
+
+    const loading = useScenarioStore.getState().loadFromCloud('account-b');
+
+    expect(useScenarioStore.getState().ownerUserId).toBe('account-b');
+    expect(useScenarioStore.getState().saved).toEqual([]);
+    expect(useScenarioStore.getState().active.name).not.toBe('Account A');
+
+    await loading;
+
+    expect(useScenarioStore.getState().saved).toEqual([ownScenario]);
+    expect(useScenarioStore.getState().active.name).toBe('Account B');
+  });
+
+  it('ignores stale cloud responses from a previous account', async () => {
+    const accountAScenario = createDefaultScenario({ name: 'Account A' });
+    const accountBScenario = createDefaultScenario({ name: 'Account B' });
+    accountAScenario.id = 'account-a-scenario';
+    accountBScenario.id = 'account-b-scenario';
+
+    let resolveAccountA!: (scenarios: typeof accountAScenario[]) => void;
+    const accountALoad = new Promise<typeof accountAScenario[]>((resolve) => {
+      resolveAccountA = resolve;
+    });
+
+    pullScenariosMock
+      .mockReturnValueOnce(accountALoad)
+      .mockResolvedValueOnce([accountBScenario]);
+
+    const loadA = useScenarioStore.getState().loadFromCloud('account-a');
+    const loadB = useScenarioStore.getState().loadFromCloud('account-b');
+
+    await loadB;
+    resolveAccountA([accountAScenario]);
+    await loadA;
+
+    expect(useScenarioStore.getState().ownerUserId).toBe('account-b');
+    expect(useScenarioStore.getState().saved).toEqual([accountBScenario]);
+    expect(useScenarioStore.getState().active.name).toBe('Account B');
+  });
 });
 
 describe('derive helpers', () => {

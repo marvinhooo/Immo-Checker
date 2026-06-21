@@ -4,6 +4,7 @@ import { createDefaultScenario } from '../engine/defaults';
 import { pullScenarios, pushSingleScenario, deleteRemoteScenario } from '../lib/sync';
 
 interface ScenarioState {
+  ownerUserId: string | null;
   active: Scenario;
   saved: Scenario[];
   isSyncing: boolean;
@@ -19,6 +20,7 @@ interface ScenarioState {
 }
 
 export const useScenarioStore = create<ScenarioState>()((set, get) => ({
+  ownerUserId: null,
   active: createDefaultScenario(),
   saved: [],
   isSyncing: false,
@@ -52,15 +54,29 @@ export const useScenarioStore = create<ScenarioState>()((set, get) => ({
     set((s) => ({ saved: s.saved.filter((x) => x.id !== id) })),
 
   loadFromCloud: async (userId) => {
-    set({ isSyncing: true, syncError: null });
+    set({
+      ownerUserId: userId,
+      active: createDefaultScenario(),
+      saved: [],
+      isSyncing: true,
+      syncError: null,
+    });
     try {
       const scenarios = await pullScenarios(userId);
-      set({ saved: scenarios, isSyncing: false });
-      const active = get().active;
-      const refreshed = scenarios.find((s) => s.id === active.id);
-      if (refreshed) set({ active: structuredClone(refreshed) });
+      if (get().ownerUserId !== userId) return;
+      set({
+        active: scenarios[0] ? structuredClone(scenarios[0]) : createDefaultScenario(),
+        saved: scenarios,
+        isSyncing: false,
+      });
     } catch (e) {
-      set({ isSyncing: false, syncError: (e as Error).message });
+      if (get().ownerUserId !== userId) return;
+      set({
+        active: createDefaultScenario(),
+        saved: [],
+        isSyncing: false,
+        syncError: (e as Error).message,
+      });
     }
   },
 

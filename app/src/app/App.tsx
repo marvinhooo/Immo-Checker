@@ -542,7 +542,9 @@ export function App() {
         fertigstellungsjahr: 2000,
         bundesland: 'NW',
         objektTyp: 'bestand',
+        bodenwertMode: 'percent',
         bodenwertAnteilPct: 20,
+        bodenrichtwertProSqm: 0,
         sanierungskosten: 0,
       },
       finanzierung: {

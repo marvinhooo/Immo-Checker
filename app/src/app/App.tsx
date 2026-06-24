@@ -287,6 +287,23 @@ export function App() {
     sondertilgungProJahr: active.finanzierung.sondertilgungProJahr,
     haltedauerJahre: active.exit.haltedauerJahre,
   }), [active]);
+  const anschlussRateFloor = useMemo(() => {
+    const initialLoan = loanAmount(active);
+    const previousMonthlyRate = (initialLoan * (active.finanzierung.sollzinsPct + active.finanzierung.tilgungPct)) / 100 / 12;
+    const debtAtRefinancing = financingSchedule.restschuldZinsbindungEnde;
+
+    if (initialLoan <= 0 || previousMonthlyRate <= 0 || debtAtRefinancing <= 0) return null;
+
+    const thresholdPct = ((previousMonthlyRate * 12) / debtAtRefinancing) * 100 - active.finanzierung.anschlusszinsPct;
+    if (!Number.isFinite(thresholdPct) || thresholdPct <= 0) return null;
+
+    const activeAnschlussTilgungPct = active.finanzierung.anschlussTilgungPct ?? active.finanzierung.tilgungPct;
+    return {
+      thresholdPct,
+      previousMonthlyRate,
+      isFloorActive: activeAnschlussTilgungPct <= thresholdPct,
+    };
+  }, [active, financingSchedule.restschuldZinsbindungEnde]);
   const effectiveBodenwertPct = useMemo(() => effectiveBodenwertAnteilPct(active), [active]);
   const effectiveBodenwert = useMemo(() => landValueAmount(active), [active]);
   const currentSollzins = sensSollzins !== null ? sensSollzins : active.finanzierung.sollzinsPct;
@@ -1341,6 +1358,20 @@ export function App() {
                       )}
                     </div>
                   </div>
+                  {anschlussRateFloor && (
+                    <div className={`rounded-lg border px-3 py-2 text-[11px] font-medium leading-snug ${
+                      anschlussRateFloor.isFloorActive
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : 'border-slate-200 bg-slate-50 text-slate-500'
+                    }`}>
+                      {anschlussRateFloor.isFloorActive ? 'Aktuell greift' : 'Unterhalb von'}{' '}
+                      <strong>{formatPercent(anschlussRateFloor.thresholdPct, 2)}</strong> Anschlusstilgung bleibt die
+                      Anschlussrate mindestens bei der bisherigen Rate von{' '}
+                      <strong>{formatEUR(anschlussRateFloor.previousMonthlyRate)}</strong>/Monat. Deshalb ändern niedrigere
+                      Werte die Cashflows, Restschuld und Eigenkapitalrendite (IRR) nicht; erst oberhalb dieser Schwelle
+                      steigt die Rate.
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <NumberInput
                       label="Sondertilgung pro Jahr (€)"

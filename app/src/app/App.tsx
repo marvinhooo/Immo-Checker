@@ -1417,18 +1417,6 @@ export function App() {
               </button>
               {openSection === 'miete' && (
                 <div className="border-t border-slate-100 px-5 py-5 space-y-4">
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Miete Modus</span>
-                    <Tabs
-                      activeTab={active.miete.rentMode}
-                      onChange={(id) => updateActive((d) => { syncRentForMode(d, id as RentMode); })}
-                      tabs={[
-                        { id: 'perMonth', label: 'Pro Monat (€)' },
-                        { id: 'perYear', label: 'Pro Jahr (€)' },
-                        { id: 'perSqm', label: 'Pro m² mtl.' },
-                      ]}
-                    />
-                  </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <NumberInput
                       label="Monatliche Kaltmiete"

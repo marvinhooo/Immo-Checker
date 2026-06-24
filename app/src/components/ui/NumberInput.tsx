@@ -13,6 +13,7 @@ interface NumberInputProps {
   className?: string;
   error?: string;
   placeholder?: string;
+  fractionDigits?: number;
 }
 
 export function NumberInput({
@@ -27,6 +28,7 @@ export function NumberInput({
   className = '',
   error,
   placeholder = '',
+  fractionDigits = 0,
 }: NumberInputProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [localValue, setLocalValue] = useState('');
@@ -35,7 +37,7 @@ export function NumberInput({
   // Helper to format the value for display when NOT focused
   const getDisplayValue = (val: number) => {
     if (suffix === 'EUR') {
-      return formatEUR(val, 0);
+      return formatEUR(val, fractionDigits);
     }
     if (suffix === '%') {
       return formatPercent(val, 2);
@@ -44,9 +46,9 @@ export function NumberInput({
       return String(val);
     }
     if (suffix) {
-      return `${formatNumber(val, 0)} ${suffix}`;
+      return `${formatNumber(val, fractionDigits)} ${suffix}`;
     }
-    return formatNumber(val, 0);
+    return formatNumber(val, fractionDigits);
   };
 
   // Helper to format the value for editing when FOCUSED (e.g. 100000 or 3.5 represented in German format as "3,5")

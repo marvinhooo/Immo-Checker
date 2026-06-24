@@ -104,8 +104,13 @@ export function loanAmount(s: Scenario): number {
 
 /** Jahres-Kaltmiete (brutto, vor Leerstand) in EUR aus dem gewaehlten Mietmodus. */
 export function annualBaseRent(s: Scenario): number {
-  if (s.miete.rentMode === 'perSqm') {
-    return s.miete.kaltmieteProSqm * s.objekt.wohnflaeche * 12;
+  switch (s.miete.rentMode) {
+    case 'perSqm':
+      return s.miete.kaltmieteProSqm * s.objekt.wohnflaeche * 12;
+    case 'perYear':
+      return s.miete.kaltmieteProJahr;
+    case 'perMonth':
+    default:
+      return s.miete.kaltmieteProMonat * 12;
   }
-  return s.miete.kaltmieteProMonat * 12;
 }

@@ -235,6 +235,7 @@ describe('Projection Engine', () => {
         fertigstellungsjahr: 2000,
         bundesland: 'BY', // 3.5% GrESt
         objektTyp: 'bestand',
+        bodenwertMode: 'percent',
         bodenwertAnteilPct: 20,
         sanierungskosten: 0,
       },

@@ -7,6 +7,7 @@ describe('rent engine - projectRent', () => {
     const input: MieteInput = {
       rentMode: 'perMonth',
       kaltmieteProMonat: 1000,
+      kaltmieteProJahr: 12000,
       kaltmieteProSqm: 0,
       leerstandPct: 5,
       steigerungen: [{ id: 'r1', kind: 'rate', fromYear: 1, percentPerYear: 2 }]
@@ -32,6 +33,7 @@ describe('rent engine - projectRent', () => {
     const input: MieteInput = {
       rentMode: 'perSqm',
       kaltmieteProMonat: 0,
+      kaltmieteProJahr: 14400,
       kaltmieteProSqm: 15,
       leerstandPct: 0,
       steigerungen: []
@@ -41,6 +43,21 @@ describe('rent engine - projectRent', () => {
     // Base: 15 * 80 * 12 = 14400
     expect(projection[0].bruttoKaltmiete).toBe(14400);
     expect(projection[1].bruttoKaltmiete).toBe(14400);
+  });
+
+  it('should project rent in yearly mode', () => {
+    const input: MieteInput = {
+      rentMode: 'perYear',
+      kaltmieteProMonat: 1000,
+      kaltmieteProJahr: 12000,
+      kaltmieteProSqm: 10,
+      leerstandPct: 10,
+      steigerungen: []
+    };
+
+    const projection = projectRent(input, 100, 1);
+    expect(projection[0].bruttoKaltmiete).toBe(12000);
+    expect(projection[0].nettoKaltmiete).toBe(10800);
   });
 });
 

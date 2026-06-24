@@ -15,22 +15,26 @@ function uuid(): string {
 }
 
 export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Scenario {
-  const bundesland = 'NW' as const;
+  const bundesland = 'SN' as const;
   const fertigstellungsjahr = 1995;
+  const wohnflaeche = 70;
+  const kaufpreis = 300000;
+  const kaltmieteProMonat = 1050;
+  const bodenrichtwertProSqm = 1500;
 
   const base: Scenario = {
     schemaVersion: SCHEMA_VERSION,
     id: uuid(),
     name: 'Beispiel: ETW 300.000 EUR',
     objekt: {
-      kaufpreis: 300000,
-      wohnflaeche: 70,
+      kaufpreis,
+      wohnflaeche,
       fertigstellungsjahr,
       bundesland,
       objektTyp: 'bestand',
-      bodenwertMode: 'percent',
-      bodenwertAnteilPct: 20,
-      bodenrichtwertProSqm: (300000 * 0.2) / 70,
+      bodenwertMode: 'perSqm',
+      bodenwertAnteilPct: ((bodenrichtwertProSqm * wohnflaeche) / kaufpreis) * 100,
+      bodenrichtwertProSqm,
       sanierungskosten: 0,
     },
     knk: {
@@ -42,20 +46,21 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
     },
     finanzierung: {
       equityMode: 'percent',
-      equityPct: 20,
-      equityAbsolute: 60000,
-      sollzinsPct: 3.8,
+      equityPct: 0,
+      equityAbsolute: 0,
+      sollzinsPct: 4.0,
       tilgungPct: 2.0,
       zinsbindungJahre: 10,
-      anschlusszinsPct: 4.5,
+      anschlusszinsPct: 4.0,
       anschlussTilgungPct: null,
       sondertilgungProJahr: 0,
       disagioPct: 0,
     },
     miete: {
       rentMode: 'perMonth',
-      kaltmieteProMonat: 1050,
-      kaltmieteProSqm: 15,
+      kaltmieteProMonat,
+      kaltmieteProJahr: kaltmieteProMonat * 12,
+      kaltmieteProSqm: kaltmieteProMonat / wohnflaeche,
       leerstandPct: 3,
       steigerungen: [
         { id: uuid(), kind: 'rate', fromYear: 1, percentPerYear: 1.5 },
@@ -63,7 +68,7 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
     },
     kosten: {
       maintenanceMode: 'perSqm',
-      instandhaltungProSqm: 12,
+      instandhaltungProSqm: 20,
       instandhaltungPctRent: 8,
       instandhaltungAbsolut: 1200,
       verwaltungProJahr: 360,

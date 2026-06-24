@@ -14,7 +14,7 @@ export type AfaModus = 'linear' | 'degressiv' | 'sonder7b' | 'denkmal7i';
 
 export type BodenwertMode = 'percent' | 'perSqm';
 export type EquityMode = 'percent' | 'absolute';
-export type RentMode = 'perMonth' | 'perSqm';
+export type RentMode = 'perMonth' | 'perYear' | 'perSqm';
 export type MaintenanceMode = 'perSqm' | 'percentRent' | 'absolute';
 export type TaxMode = 'income' | 'marginalRate';
 export type Veranlagung = 'single' | 'splitting';
@@ -66,6 +66,7 @@ export interface FinanzierungInput {
 export interface MieteInput {
   rentMode: RentMode;
   kaltmieteProMonat: number; // EUR/Monat (rentMode = 'perMonth')
+  kaltmieteProJahr: number; // EUR/Jahr (rentMode = 'perYear')
   kaltmieteProSqm: number; // EUR/m2/Monat (rentMode = 'perSqm')
   leerstandPct: number; // Mietausfallwagnis / Leerstand %
   steigerungen: IncreaseRule[]; // flexible Mietsteigerung

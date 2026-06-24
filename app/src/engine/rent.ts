@@ -27,10 +27,17 @@ export function projectRent(
   const result: RentYearProjection[] = [];
   if (years <= 0) return result;
 
-  // Calculate base yearly rent
-  const baseRentYear = mieteInput.rentMode === 'perSqm'
-    ? mieteInput.kaltmieteProSqm * wohnflaeche * 12
-    : mieteInput.kaltmieteProMonat * 12;
+  const baseRentYear = (() => {
+    switch (mieteInput.rentMode) {
+      case 'perSqm':
+        return mieteInput.kaltmieteProSqm * wohnflaeche * 12;
+      case 'perYear':
+        return mieteInput.kaltmieteProJahr;
+      case 'perMonth':
+      default:
+        return mieteInput.kaltmieteProMonat * 12;
+    }
+  })();
 
   // Generate the brutto rent series
   const bruttoRentSeries = projectSeries(baseRentYear, mieteInput.steigerungen, years);

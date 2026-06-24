@@ -5,7 +5,7 @@ const BUNDESLAENDER = ['BW', 'BY', 'BE', 'BB', 'HB', 'HH', 'HE', 'MV', 'NI', 'NW
 const OBJEKT_TYPEN = ['bestand', 'neubau', 'denkmal'] as const;
 const BODENWERT_MODES = ['percent', 'perSqm'] as const;
 const EQUITY_MODES = ['percent', 'absolute'] as const;
-const RENT_MODES = ['perMonth', 'perSqm'] as const;
+const RENT_MODES = ['perMonth', 'perYear', 'perSqm'] as const;
 const MAINTENANCE_MODES = ['perSqm', 'percentRent', 'absolute'] as const;
 const TAX_MODES = ['income', 'marginalRate'] as const;
 const VERANLAGUNGEN = ['single', 'splitting'] as const;
@@ -170,9 +170,23 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   requireNumberInRange(finanzierung, 'disagioPct', 0, 99.999, prefix);
 
   const miete = requireSection(s, 'miete', prefix);
-  requireEnum(miete, 'rentMode', RENT_MODES, prefix);
-  requireNumberInRange(miete, 'kaltmieteProMonat', 0, Number.MAX_SAFE_INTEGER, prefix);
-  requireNumberInRange(miete, 'kaltmieteProSqm', 0, Number.MAX_SAFE_INTEGER, prefix);
+  const rentMode = requireEnum(miete, 'rentMode', RENT_MODES, prefix);
+  const kaltmieteProMonat = requireNumberInRange(miete, 'kaltmieteProMonat', 0, Number.MAX_SAFE_INTEGER, prefix);
+  const kaltmieteProSqm = requireNumberInRange(miete, 'kaltmieteProSqm', 0, Number.MAX_SAFE_INTEGER, prefix);
+  const kaltmieteProJahr = miete.kaltmieteProJahr === undefined || miete.kaltmieteProJahr === null
+    ? (rentMode === 'perSqm' ? kaltmieteProSqm * wohnflaeche * 12 : kaltmieteProMonat * 12)
+    : requireNumberInRange(miete, 'kaltmieteProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
+  if (rentMode === 'perSqm') {
+    const monthlyRent = kaltmieteProSqm * wohnflaeche;
+    miete.kaltmieteProMonat = monthlyRent;
+    miete.kaltmieteProJahr = monthlyRent * 12;
+  } else if (rentMode === 'perYear') {
+    miete.kaltmieteProMonat = kaltmieteProJahr / 12;
+    miete.kaltmieteProSqm = wohnflaeche > 0 ? (kaltmieteProJahr / 12) / wohnflaeche : 0;
+  } else {
+    miete.kaltmieteProJahr = kaltmieteProMonat * 12;
+    miete.kaltmieteProSqm = wohnflaeche > 0 ? kaltmieteProMonat / wohnflaeche : 0;
+  }
   requireNumberInRange(miete, 'leerstandPct', 0, 100, prefix);
   validateIncreaseRules(miete.steigerungen, 'Mietsteigerungen', prefix);
 

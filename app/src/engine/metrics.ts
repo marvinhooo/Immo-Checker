@@ -114,19 +114,25 @@ export function computeIRR(cashflows: number[]): number {
 }
 
 /**
- * Findet die monatliche Kaltmiete (bzw. Kaltmiete pro qm), bei der der Netto-Cashflow nach Steuern
- * im ersten Jahr genau 0 EUR beträgt.
+ * Findet die Kaltmiete in der aktuell gewaehlten Einheit, bei der der Netto-Cashflow nach Steuern
+ * im ersten Jahr genau 0 EUR betraegt.
  */
 export function findBreakEvenRent(scenario: Scenario): number {
-  const isSqm = scenario.miete.rentMode === 'perSqm';
-
   const getCashflowForRent = (rentVal: number) => {
+    const monthlyRent = scenario.miete.rentMode === 'perSqm'
+      ? rentVal * scenario.objekt.wohnflaeche
+      : scenario.miete.rentMode === 'perYear'
+        ? rentVal / 12
+        : rentVal;
+    const yearlyRent = scenario.miete.rentMode === 'perYear' ? rentVal : monthlyRent * 12;
+
     const testScenario = {
       ...scenario,
       miete: {
         ...scenario.miete,
-        kaltmieteProMonat: isSqm ? scenario.miete.kaltmieteProMonat : rentVal,
-        kaltmieteProSqm: isSqm ? rentVal : scenario.miete.kaltmieteProSqm,
+        kaltmieteProMonat: monthlyRent,
+        kaltmieteProJahr: yearlyRent,
+        kaltmieteProSqm: scenario.objekt.wohnflaeche > 0 ? monthlyRent / scenario.objekt.wohnflaeche : 0,
       }
     };
     const proj = runProjection(testScenario, 1);

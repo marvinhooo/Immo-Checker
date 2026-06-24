@@ -10,6 +10,7 @@ import {
   effectiveBodenwertAnteilPct,
   landValueAmount,
   loanAmount,
+  annualBaseRent,
 } from '../engine/derive';
 import { runProjection } from '../engine/projection';
 import { buildAmortizationSchedule } from '../engine/financing';
@@ -45,7 +46,7 @@ import { Tabs } from '../components/ui/Tabs';
 
 // Constants and Helpers
 import { BUNDESLAND_LABELS, GREST_BY_BUNDESLAND } from '../engine/constants';
-import type { BodenwertMode, Bundesland, ObjektTyp, AfaModus, EquityMode, RentMode, MaintenanceMode, TaxMode, Veranlagung, IncreaseRule } from '../engine/types';
+import type { Scenario, BodenwertMode, Bundesland, ObjektTyp, AfaModus, EquityMode, RentMode, MaintenanceMode, TaxMode, Veranlagung, IncreaseRule } from '../engine/types';
 import { marginalRate } from '../engine/tax';
 import { projectSeries } from '../engine/timeline';
 import { createDefaultScenario } from '../engine/defaults';
@@ -99,6 +100,46 @@ function bodenrichtwertFromPct(kaufpreis: number, wohnflaeche: number, pct: numb
 function bodenwertPctFromRichtwert(kaufpreis: number, wohnflaeche: number, richtwertProSqm: number): number {
   if (kaufpreis <= 0) return 0;
   return clampPercent(((Math.max(0, richtwertProSqm) * wohnflaeche) / kaufpreis) * 100);
+}
+
+function rentPerSqmFromMonthly(monthlyRent: number, wohnflaeche: number): number {
+  return wohnflaeche > 0 ? monthlyRent / wohnflaeche : 0;
+}
+
+function updateRentFromMonthly(d: Scenario, monthlyRent: number): void {
+  const rent = Math.max(0, monthlyRent);
+  d.miete.rentMode = 'perMonth';
+  d.miete.kaltmieteProMonat = rent;
+  d.miete.kaltmieteProJahr = rent * 12;
+  d.miete.kaltmieteProSqm = rentPerSqmFromMonthly(rent, d.objekt.wohnflaeche);
+}
+
+function updateRentFromYear(d: Scenario, yearlyRent: number): void {
+  const rent = Math.max(0, yearlyRent);
+  const monthlyRent = rent / 12;
+  d.miete.rentMode = 'perYear';
+  d.miete.kaltmieteProJahr = rent;
+  d.miete.kaltmieteProMonat = monthlyRent;
+  d.miete.kaltmieteProSqm = rentPerSqmFromMonthly(monthlyRent, d.objekt.wohnflaeche);
+}
+
+function updateRentFromSqm(d: Scenario, rentPerSqm: number): void {
+  const rent = Math.max(0, rentPerSqm);
+  const monthlyRent = rent * Math.max(0, d.objekt.wohnflaeche);
+  d.miete.rentMode = 'perSqm';
+  d.miete.kaltmieteProSqm = rent;
+  d.miete.kaltmieteProMonat = monthlyRent;
+  d.miete.kaltmieteProJahr = monthlyRent * 12;
+}
+
+function syncRentForMode(d: Scenario, mode: RentMode): void {
+  if (mode === 'perYear') {
+    updateRentFromYear(d, d.miete.kaltmieteProJahr);
+  } else if (mode === 'perSqm') {
+    updateRentFromSqm(d, d.miete.kaltmieteProSqm);
+  } else {
+    updateRentFromMonthly(d, d.miete.kaltmieteProMonat);
+  }
 }
 
 function formatLoanTerm(months: number): string {
@@ -439,9 +480,7 @@ export function App() {
   };
 
   // Helper calculations for preview charts
-  const rentBase = active.miete.rentMode === 'perMonth' 
-    ? active.miete.kaltmieteProMonat 
-    : active.miete.kaltmieteProSqm * active.objekt.wohnflaeche;
+  const rentBase = annualBaseRent(active) / 12;
   
   const rentChartData = useMemo(() => {
     const rentSeries = projectSeries(rentBase, active.miete.steigerungen, active.exit.haltedauerJahre);
@@ -540,21 +579,21 @@ export function App() {
         kaufpreis: 0,
         wohnflaeche: 0,
         fertigstellungsjahr: 2000,
-        bundesland: 'NW',
+        bundesland: 'SN',
         objektTyp: 'bestand',
-        bodenwertMode: 'percent',
-        bodenwertAnteilPct: 20,
-        bodenrichtwertProSqm: 0,
+        bodenwertMode: 'perSqm',
+        bodenwertAnteilPct: 0,
+        bodenrichtwertProSqm: 1500,
         sanierungskosten: 0,
       },
       finanzierung: {
         equityMode: 'percent',
-        equityPct: 20,
+        equityPct: 0,
         equityAbsolute: 0,
-        sollzinsPct: 3.8,
+        sollzinsPct: 4.0,
         tilgungPct: 2.0,
         zinsbindungJahre: 10,
-        anschlusszinsPct: 4.5,
+        anschlusszinsPct: 4.0,
         anschlussTilgungPct: null,
         sondertilgungProJahr: 0,
         disagioPct: 0,
@@ -562,6 +601,7 @@ export function App() {
       miete: {
         rentMode: 'perMonth',
         kaltmieteProMonat: 0,
+        kaltmieteProJahr: 0,
         kaltmieteProSqm: 0,
         leerstandPct: 3,
         steigerungen: [
@@ -966,6 +1006,7 @@ export function App() {
                             d.objekt.bodenwertAnteilPct
                           );
                         }
+                        syncRentForMode(d, d.miete.rentMode);
                       })}
                     />
                     <NumberInput
@@ -1365,9 +1406,7 @@ export function App() {
                   <span>4. Miete</span>
                   {openSection !== 'miete' && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
-                      {active.miete.rentMode === 'perMonth'
-                        ? `${formatEUR(active.miete.kaltmieteProMonat)}/Monat`
-                        : `${formatNumber(active.miete.kaltmieteProSqm, 2)} €/m²`}
+                      {formatEUR(active.miete.kaltmieteProMonat)}/Monat · {formatEUR(active.miete.kaltmieteProJahr)}/Jahr · {formatNumber(active.miete.kaltmieteProSqm, 2)} €/m²
                       {' · '}{formatPercent(active.miete.leerstandPct)} Leerstand
                     </span>
                   )}
@@ -1382,31 +1421,39 @@ export function App() {
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Miete Modus</span>
                     <Tabs
                       activeTab={active.miete.rentMode}
-                      onChange={(id) => updateActive((d) => { d.miete.rentMode = id as RentMode; })}
+                      onChange={(id) => updateActive((d) => { syncRentForMode(d, id as RentMode); })}
                       tabs={[
                         { id: 'perMonth', label: 'Pro Monat (€)' },
-                        { id: 'perSqm', label: 'Pro m² (€)' },
+                        { id: 'perYear', label: 'Pro Jahr (€)' },
+                        { id: 'perSqm', label: 'Pro m² mtl.' },
                       ]}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    {active.miete.rentMode === 'perMonth' ? (
-                      <NumberInput
-                        label="Monatliche Kaltmiete"
-                        value={active.miete.kaltmieteProMonat}
-                        suffix="EUR"
-                        min={0}
-                        onChange={(val) => updateActive((d) => { d.miete.kaltmieteProMonat = val; })}
-                      />
-                    ) : (
-                      <NumberInput
-                        label="Miete pro m²"
-                        value={active.miete.kaltmieteProSqm}
-                        suffix="EUR"
-                        min={0}
-                        onChange={(val) => updateActive((d) => { d.miete.kaltmieteProSqm = val; })}
-                      />
-                    )}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <NumberInput
+                      label="Monatliche Kaltmiete"
+                      value={active.miete.kaltmieteProMonat}
+                      suffix="EUR"
+                      min={0}
+                      fractionDigits={2}
+                      onChange={(val) => updateActive((d) => { updateRentFromMonthly(d, val); })}
+                    />
+                    <NumberInput
+                      label="Kaltmiete p. a. (Jahr)"
+                      value={active.miete.kaltmieteProJahr}
+                      suffix="EUR"
+                      min={0}
+                      fractionDigits={2}
+                      onChange={(val) => updateActive((d) => { updateRentFromYear(d, val); })}
+                    />
+                    <NumberInput
+                      label="Miete pro m²/Monat"
+                      value={active.miete.kaltmieteProSqm}
+                      suffix="EUR/m²"
+                      min={0}
+                      fractionDigits={2}
+                      onChange={(val) => updateActive((d) => { updateRentFromSqm(d, val); })}
+                    />
                     <Slider
                       label="Leerstandsquote"
                       value={active.miete.leerstandPct}

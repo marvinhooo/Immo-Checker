@@ -133,22 +133,22 @@ describe('scenarioStore', () => {
 });
 
 describe('derive helpers', () => {
-  it('computes KNK, total invest, equity and loan consistently (NW default)', () => {
+  it('computes KNK, total invest, equity and loan consistently (SN default)', () => {
     const s = createDefaultScenario();
-    // KNK = 300.000 * (6,5 + 1,5 + 3,57)% = 34.710
-    expect(knkAmount(s)).toBeCloseTo(34710, 2);
-    expect(totalInvest(s)).toBeCloseTo(334710, 2);
-    // Eigenkapital = 20 % von Kaufpreis + Sanierung, KNK werden separat behandelt.
-    expect(equityAmount(s)).toBeCloseTo(60000, 2);
-    expect(loanAmount(s)).toBeCloseTo(240000, 2);
+    // KNK = 300.000 * (5,5 + 1,5 + 3,57)% = 31.710
+    expect(knkAmount(s)).toBeCloseTo(31710, 2);
+    expect(totalInvest(s)).toBeCloseTo(331710, 2);
+    // Eigenkapital = 0 % von Kaufpreis + Sanierung, KNK werden separat behandelt.
+    expect(equityAmount(s)).toBeCloseTo(0, 2);
+    expect(loanAmount(s)).toBeCloseTo(300000, 2);
 
     const breakdown = cashInvestmentBreakdown(s);
-    expect(breakdown.enteredEquity).toBeCloseTo(60000, 2);
+    expect(breakdown.enteredEquity).toBeCloseTo(0, 2);
     expect(breakdown.financedKnk).toBe(0);
-    expect(breakdown.unfinancedKnkCash).toBeCloseTo(34710, 2);
+    expect(breakdown.unfinancedKnkCash).toBeCloseTo(31710, 2);
     expect(breakdown.additionalCashForUnfinancedKnk).toBe(0);
-    expect(breakdown.equityAvailableAfterKnk).toBeCloseTo(60000, 2);
-    expect(breakdown.totalCashInvestment).toBeCloseTo(94710, 2);
+    expect(breakdown.equityAvailableAfterKnk).toBeCloseTo(0, 2);
+    expect(breakdown.totalCashInvestment).toBeCloseTo(31710, 2);
   });
 
   it('derives the effective land share from Bodenrichtwert per sqm', () => {
@@ -199,13 +199,13 @@ describe('derive helpers', () => {
 
     const breakdown = cashInvestmentBreakdown(s);
 
-    expect(knkAmount(s)).toBeCloseTo(34710, 2);
+    expect(knkAmount(s)).toBeCloseTo(31710, 2);
     expect(breakdown.enteredEquity).toBe(10000);
     expect(breakdown.financedKnk).toBe(0);
-    expect(breakdown.unfinancedKnkCash).toBeCloseTo(34710, 2);
+    expect(breakdown.unfinancedKnkCash).toBeCloseTo(31710, 2);
     expect(breakdown.additionalCashForUnfinancedKnk).toBe(0);
-    expect(breakdown.totalCashInvestment).toBeCloseTo(44710, 2);
-    expect(cashInvestment(s)).toBeCloseTo(44710, 2);
+    expect(breakdown.totalCashInvestment).toBeCloseTo(41710, 2);
+    expect(cashInvestment(s)).toBeCloseTo(41710, 2);
     expect(loanAmount(s)).toBeCloseTo(s.objekt.kaufpreis + s.objekt.sanierungskosten - 10000, 2);
   });
 

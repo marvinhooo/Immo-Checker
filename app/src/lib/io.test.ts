@@ -148,8 +148,50 @@ describe('io', () => {
     const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
 
     expect(imported.objekt.bodenwertMode).toBe('percent');
-    expect(imported.objekt.bodenwertAnteilPct).toBe(20);
-    expect(imported.objekt.bodenrichtwertProSqm).toBeCloseTo((300000 * 0.2) / 70, 5);
+    expect(imported.objekt.bodenwertAnteilPct).toBe(35);
+    expect(imported.objekt.bodenrichtwertProSqm).toBeCloseTo(1500, 5);
+  });
+
+  it('should import old scenarios without yearly cold rent and sync rent fields from the selected mode', () => {
+    const sc = createDefaultScenario({
+      miete: {
+        rentMode: 'perMonth',
+        kaltmieteProMonat: 900,
+        kaltmieteProJahr: 111,
+        kaltmieteProSqm: 1,
+        leerstandPct: 0,
+        steigerungen: [],
+      },
+    });
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const miete = parsed.miete as Record<string, unknown>;
+    delete miete.kaltmieteProJahr;
+
+    const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
+
+    expect(imported.miete.kaltmieteProMonat).toBe(900);
+    expect(imported.miete.kaltmieteProJahr).toBe(10800);
+    expect(imported.miete.kaltmieteProSqm).toBeCloseTo(900 / 70, 5);
+  });
+
+  it('should preserve and validate yearly cold rent mode on import', () => {
+    const sc = createDefaultScenario({
+      miete: {
+        rentMode: 'perYear',
+        kaltmieteProMonat: 1,
+        kaltmieteProJahr: 14400,
+        kaltmieteProSqm: 1,
+        leerstandPct: 0,
+        steigerungen: [],
+      },
+    });
+
+    const imported = importScenarios(exportScenario(sc)) as Scenario;
+
+    expect(imported.miete.rentMode).toBe('perYear');
+    expect(imported.miete.kaltmieteProJahr).toBe(14400);
+    expect(imported.miete.kaltmieteProMonat).toBe(1200);
+    expect(imported.miete.kaltmieteProSqm).toBeCloseTo(1200 / 70, 5);
   });
 
   it('should preserve and validate configured Bodenrichtwert per sqm on import', () => {

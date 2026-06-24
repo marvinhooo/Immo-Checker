@@ -67,21 +67,21 @@ describe('Exit calculation Engine', () => {
 
     // Let's verify the Spekulationsgewinn math:
     // kaufpreis = 300,000
-    // knk = 300,000 * ( Northwest rate NW: 6.5% + 1.5% + 3.57% = 11.57% ) = 34,710
-    // purchaseCostBasis = 334,710
+    // knk = 300,000 * (Sachsen: 5.5% + 1.5% + 3.57% = 10.57%) = 31,710
+    // purchaseCostBasis = 331,710
     // verkaufspreis after 5 years of 3% growth = 300,000 * (1.03)^5 = 347,782.20
     // kumulierte AfA for 5 years:
-    // buildingBasis = (300,000 + 34,710) * 80% = 267,768
-    // afaSatz = 2% (NW fertigstellungsjahr 1995) -> 5355.36 / year
-    // 5 years afa = 26,776.80
-    // Gewinn = 347,782.20 - 2% Verkaufsnebenkosten - Vorfaelligkeit - 334,710 + 26,776.80
-    expect(exitRes.spekulationsGewinn).toBeGreaterThan(29000);
+    // buildingBasis = (300,000 + 31,710) * 65% = 215,611.50
+    // afaSatz = 2% (fertigstellungsjahr 1995) -> 4,312.23 / year
+    // 5 years afa = 21,561.15
+    // Gewinn = 347,782.20 - 2% Verkaufsnebenkosten - Vorfaelligkeit - 331,710 + 21,561.15
+    expect(exitRes.spekulationsGewinn).toBeGreaterThan(27000);
     expect(exitRes.spekulationsGewinn).toBeCloseTo(
       exitRes.verkaufspreis
         - exitRes.verkaufsnebenkosten
         - exitRes.vorfaelligkeitsEntschaedigung
-        - (300000 + 34710)
-        + 26776.8,
+        - (300000 + 31710)
+        + 21561.15,
       0
     );
     expect(exitRes.spekulationssteuer).toBeCloseTo(exitRes.spekulationsGewinn * 0.40, 2);

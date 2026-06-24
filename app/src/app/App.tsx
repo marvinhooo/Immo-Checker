@@ -315,7 +315,7 @@ export function App() {
   const metrics = useMemo(() => calculateMetrics(active, proj), [active, proj]);
   const exitRes = useMemo(() => calculateExit(active, proj), [active, proj]);
   const holdingAnalysis = useMemo(
-    () => activeTab === 'holding'
+    () => activeTab === 'holding' || activeTab === 'dashboard'
       ? analyzeHoldingPeriods(active)
       : {
           initialEquity: proj.initialEquity,
@@ -325,6 +325,10 @@ export function App() {
           steuerfreiAbJahr: 10,
         },
     [active, activeTab, proj.initialEquity]
+  );
+  const bestIrrExitYear = useMemo(
+    () => holdingAnalysis.years.find((y) => y.jahr === holdingAnalysis.besteExitJahrNachIrr) ?? null,
+    [holdingAnalysis]
   );
   const sensitivityResult = useMemo(() => {
     return runSensitivity(active, {
@@ -2130,6 +2134,14 @@ export function App() {
                       value: formatPercent(metrics.irr),
                       color: metrics.rating === 'green' ? 'text-emerald-700' : metrics.rating === 'red' ? 'text-rose-700' : 'text-amber-600',
                       desc: 'Interner Zinsfuß auf den baren Kapitaleinsatz inkl. Verkauf',
+                    },
+                    {
+                      label: 'Max. Profitabilität (IRR)',
+                      value: bestIrrExitYear ? `Jahr ${bestIrrExitYear.jahr}` : '–',
+                      color: bestIrrExitYear && bestIrrExitYear.irrPct >= metrics.irr ? 'text-emerald-700' : 'text-slate-700',
+                      desc: bestIrrExitYear
+                        ? `Bester Verkauf innerhalb der Haltedauer: ${formatPercent(bestIrrExitYear.irrPct)} p. a.`
+                        : 'Kein bestes Verkaufsjahr ermittelbar',
                     },
                     {
                       label: 'Netto-Mietrendite',

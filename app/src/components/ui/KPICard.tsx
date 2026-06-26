@@ -1,5 +1,6 @@
 import { Card } from './Card';
 import { Tooltip } from './Tooltip';
+import { Info } from 'lucide-react';
 
 interface KPICardProps {
   label: string;
@@ -52,29 +53,20 @@ export function KPICard({
           </span>
           {tooltip && (
             <Tooltip content={tooltip} position="top">
-              <span className="cursor-help text-xs text-slate-400 hover:text-slate-600">
-                <svg
-                  className="h-3.5 w-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2.5"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  ></path>
-                </svg>
-              </span>
+              <button
+                type="button"
+                className="cursor-help rounded-full text-slate-400 transition hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                aria-label={`${label} erklaeren`}
+              >
+                <Info size={14} />
+              </button>
             </Tooltip>
           )}
         </div>
         <span className={`h-2.5 w-2.5 rounded-full ${trendStyles.indicator}`} />
       </div>
       <div className="mt-2.5 flex items-baseline justify-between">
-        <span className="text-2xl font-bold tracking-tight text-slate-800 tabular-nums">
+        <span className="break-words text-xl font-bold tracking-tight text-slate-800 tabular-nums sm:text-2xl">
           {value}
         </span>
       </div>

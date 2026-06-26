@@ -10,6 +10,14 @@ body {
   margin: 0;
 }
 
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 .scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -59,4 +67,3 @@ body {
     border: 1px solid #e2e8f0 !important;
   }
 }
-

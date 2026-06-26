@@ -43,7 +43,8 @@ export interface HoldingAnalysis {
  */
 export function analyzeHoldingPeriods(scenario: Scenario): HoldingAnalysis {
   const N = Math.max(1, scenario.exit.haltedauerJahre);
-  const initialEquity = runProjection(scenario, N).initialEquity;
+  const projection = runProjection(scenario, N);
+  const initialEquity = projection.initialEquity;
 
   const years: HoldingYearAnalysis[] = [];
   let breakEvenJahr: number | null = null;
@@ -56,22 +57,22 @@ export function analyzeHoldingPeriods(scenario: Scenario): HoldingAnalysis {
       ...scenario,
       exit: { ...scenario.exit, haltedauerJahre: t },
     };
-    const projT = runProjection(scenarioT, t);
-    const exitT = calculateExit(scenarioT, projT);
+    const yearT = projection.years[t - 1];
+    const exitT = calculateExit(scenarioT, projection);
 
-    const kumCf = projT.years[t - 1].kumulierterCashflowNachSteuer;
+    const kumCf = yearT.kumulierterCashflowNachSteuer;
 
     // Eigenkapital-Cashflows fuer die IRR: -EK in t0, Jahres-Cashflows, Verkaufserloes in t.
     const cashflows: number[] = [-initialEquity];
     for (let i = 1; i <= t; i++) {
-      const cf = projT.years[i - 1].cashflowNachSteuer;
+      const cf = projection.years[i - 1].cashflowNachSteuer;
       cashflows.push(i === t ? cf + exitT.nettoVerkaufserloesNachSteuer : cf);
     }
     const irrPct = computeIRR(cashflows);
 
     const gesamtgewinn = kumCf + exitT.nettoVerkaufserloesNachSteuer - initialEquity;
     const finalValue = initialEquity + gesamtgewinn; // = kumCf + nettoVerkaufserloesNachSteuer
-    const kumulierterEkNachschuss = projT.years
+    const kumulierterEkNachschuss = projection.years
       .slice(0, t)
       .reduce((sum, y) => sum + Math.max(0, -y.cashflowNachSteuer), 0);
     const ekGesamteinsatz = initialEquity + kumulierterEkNachschuss;
@@ -91,7 +92,7 @@ export function analyzeHoldingPeriods(scenario: Scenario): HoldingAnalysis {
 
     years.push({
       jahr: t,
-      immobilienwert: projT.years[t - 1].immobilienwert,
+      immobilienwert: yearT.immobilienwert,
       restschuld: exitT.restschuld,
       verkaufsnebenkosten: exitT.verkaufsnebenkosten,
       vorfaelligkeit: exitT.vorfaelligkeitsEntschaedigung,

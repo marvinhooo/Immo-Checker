@@ -328,15 +328,85 @@ describe('Exit calculation Engine', () => {
       },
     });
 
-    const exitRes = calculateExit(scenario, runProjection(scenario));
+    const projection = runProjection(scenario);
+    const exitRes = calculateExit(scenario, projection);
+    const saleYearVv = projection.years[scenario.exit.haltedauerJahre - 1].vvErgebnis;
     const expectedTax = calculateTotalTax(
+      scenario.steuer.bruttoJahresEinkommen + saleYearVv + exitRes.spekulationsGewinn,
+      false,
+      false,
+      0
+    ) - calculateTotalTax(scenario.steuer.bruttoJahresEinkommen + saleYearVv, false, false, 0);
+
+    expect(exitRes.spekulationsGewinn).toBeGreaterThan(0);
+    expect(exitRes.spekulationssteuer).toBeCloseTo(expectedTax, 2);
+  });
+
+  it('bases income-mode speculation tax on taxable income after sale-year V&V', () => {
+    const scenario = createDefaultScenario({
+      finanzierung: {
+        equityMode: 'percent',
+        equityPct: 0,
+        equityAbsolute: 0,
+        sollzinsPct: 8,
+        tilgungPct: 1,
+        zinsbindungJahre: 10,
+        anschlusszinsPct: 8,
+        anschlussTilgungPct: null,
+        sondertilgungProJahr: 0,
+        disagioPct: 0,
+      },
+      miete: {
+        rentMode: 'perMonth',
+        kaltmieteProMonat: 250,
+        kaltmieteProJahr: 3000,
+        kaltmieteProSqm: 3.57,
+        leerstandPct: 0,
+        steigerungen: [],
+      },
+      exit: {
+        haltedauerJahre: 5,
+        verkaufsnebenkostenPct: 0,
+        vorfaelligkeitPct: 0,
+      },
+      steuer: {
+        taxMode: 'income',
+        bruttoJahresEinkommen: 70000,
+        grenzsteuersatzPct: 42,
+        veranlagung: 'single',
+        soli: false,
+        kirchensteuerPct: 0,
+      },
+      wertentwicklung: {
+        szenario: [
+          { id: 'strong-growth', kind: 'rate', fromYear: 1, percentPerYear: 12 },
+        ],
+      },
+    });
+
+    const projection = runProjection(scenario);
+    const saleYearVv = projection.years[scenario.exit.haltedauerJahre - 1].vvErgebnis;
+    const exitRes = calculateExit(scenario, projection);
+    const expectedTax = calculateTotalTax(
+      scenario.steuer.bruttoJahresEinkommen + saleYearVv + exitRes.spekulationsGewinn,
+      false,
+      false,
+      0
+    ) - calculateTotalTax(
+      scenario.steuer.bruttoJahresEinkommen + saleYearVv,
+      false,
+      false,
+      0
+    );
+    const oldTaxWithoutSaleYearVv = calculateTotalTax(
       scenario.steuer.bruttoJahresEinkommen + exitRes.spekulationsGewinn,
       false,
       false,
       0
     ) - calculateTotalTax(scenario.steuer.bruttoJahresEinkommen, false, false, 0);
 
-    expect(exitRes.spekulationsGewinn).toBeGreaterThan(0);
+    expect(saleYearVv).toBeLessThan(0);
     expect(exitRes.spekulationssteuer).toBeCloseTo(expectedTax, 2);
+    expect(exitRes.spekulationssteuer).not.toBeCloseTo(oldTaxWithoutSaleYearVv, 2);
   });
 });

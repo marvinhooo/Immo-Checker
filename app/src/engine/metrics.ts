@@ -68,7 +68,7 @@ export function computeIRR(cashflows: number[]): number {
     let bracketFound = false;
     let lastR = -0.95;
     let lastVal = npv(lastR);
-    for (let r = -0.90; r <= 5.0; r += 0.1) {
+    for (let r = -0.99; r <= 5.0; r += 0.01) {
       const val = npv(r);
       if (lastVal * val < 0) {
         low = lastR;

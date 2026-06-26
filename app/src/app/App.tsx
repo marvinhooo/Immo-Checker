@@ -43,6 +43,8 @@ import { Slider } from '../components/ui/Slider';
 import { Select } from '../components/ui/Select';
 import { Toggle } from '../components/ui/Toggle';
 import { Tabs } from '../components/ui/Tabs';
+import { Tooltip } from '../components/ui/Tooltip';
+import { KPICard } from '../components/ui/KPICard';
 
 // Constants and Helpers
 import { BUNDESLAND_LABELS, GREST_BY_BUNDESLAND } from '../engine/constants';
@@ -226,6 +228,20 @@ function RuleNumberInput({
       }}
       className={className}
     />
+  );
+}
+
+function InfoTooltip({ content }: { content: string }) {
+  return (
+    <Tooltip content={content} position="top">
+      <button
+        type="button"
+        className="inline-flex rounded-full text-slate-400 transition hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+        aria-label="Begriff erklaeren"
+      >
+        <Info size={13} />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -529,21 +545,33 @@ export function App() {
 
   // Validation Warnings
   const warnings = useMemo(() => {
-    const list: string[] = [];
+    const list: Array<{ message: string; severity: 'warning' | 'danger' }> = [];
     const firstYearCf = proj.years[0]?.cashflowNachSteuerMonatlich ?? 0;
     if (firstYearCf < 0) {
-      list.push(`Monatlicher Cashflow ist im ersten Jahr negativ (${formatEUR(firstYearCf)}/Monat). Sie müssen monatlich Geld zuschießen.`);
+      list.push({
+        message: `Monatlicher Cashflow ist im ersten Jahr negativ (${formatEUR(firstYearCf)}/Monat). Sie müssen monatlich Geld zuschießen.`,
+        severity: 'danger',
+      });
     }
     const maxLtv = Math.max(...proj.years.map(y => y.ltv));
     if (maxLtv > 100) {
-      list.push(`Sehr hohe Fremdkapitalquote (LTV max. ${formatPercent(maxLtv)}). Das Risiko für eine Zinsänderung oder Unterdeckung ist erhöht.`);
+      list.push({
+        message: `Sehr hohe Fremdkapitalquote (LTV max. ${formatPercent(maxLtv)}). Das Risiko für eine Zinsänderung oder Unterdeckung ist erhöht.`,
+        severity: 'danger',
+      });
     }
     if (active.exit.haltedauerJahre < 10) {
-      list.push(`Haltedauer liegt unter 10 Jahren (${active.exit.haltedauerJahre} J.). Gewinne unterliegen der Spekulationssteuer gemäß §23 EStG.`);
+      list.push({
+        message: `Haltedauer liegt unter 10 Jahren (${active.exit.haltedauerJahre} J.). Gewinne unterliegen der Spekulationssteuer gemäß §23 EStG.`,
+        severity: 'warning',
+      });
     }
     const endRestschuld = exitRes.restschuld;
     if (endRestschuld > 0 && active.exit.haltedauerJahre >= active.finanzierung.zinsbindungJahre) {
-      list.push(`Restschuld nach Zinsbindung (${formatEUR(endRestschuld)}) ist vom Anschlusszins abhängig. Ein Anstieg der Zinsen erhöht die Annuität.`);
+      list.push({
+        message: `Restschuld nach Zinsbindung (${formatEUR(endRestschuld)}) ist vom Anschlusszins abhängig. Ein Anstieg der Zinsen erhöht die Annuität.`,
+        severity: 'warning',
+      });
     }
     return list;
   }, [proj, active, active.exit.haltedauerJahre, active.finanzierung.zinsbindungJahre, exitRes]);
@@ -642,8 +670,31 @@ export function App() {
   };
 
   const handleSave = async () => {
+    const overwritesExisting = saved.some((scenario) => scenario.id === active.id);
+    if (
+      overwritesExisting &&
+      !confirm(`Möchten Sie das gespeicherte Szenario "${active.name}" wirklich überschreiben?`)
+    ) {
+      return;
+    }
     await syncedSave();
     alert(`Szenario "${active.name}" gespeichert.`);
+  };
+
+  const handleSaveAs = () => {
+    const name = prompt('Name für die neue Szenario-Kopie:', `${active.name} (Variante)`);
+    if (!name || !name.trim()) return;
+    updateActive((d) => {
+      d.id = crypto.randomUUID();
+      d.name = name.trim();
+    });
+    setTimeout(() => { syncedSave(name.trim()); }, 0);
+  };
+
+  const handleResetActive = () => {
+    if (confirm('Möchten Sie die aktuellen Eingaben wirklich auf das Default-Szenario zurücksetzen?')) {
+      resetActive();
+    }
   };
 
   const handleDuplicate = () => {
@@ -804,8 +855,8 @@ export function App() {
     <div className="min-h-screen bg-slate-50/50 text-slate-800 antialiased">
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-md no-print">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
-          <div>
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="min-w-0">
             <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
               Immobilien-Investment-Checker
             </h1>
@@ -813,9 +864,9 @@ export function App() {
               Kapitalanlage-Rechner für private Anleger in Deutschland
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
             {isSyncing && (
-              <span className="text-[10px] font-medium text-blue-500 animate-pulse">Sync...</span>
+              <span className="text-xs font-semibold text-blue-700 animate-pulse">Sync...</span>
             )}
             <span className="text-[11px] font-medium text-slate-400 hidden sm:inline truncate max-w-[160px]">
               {user?.email}
@@ -823,20 +874,20 @@ export function App() {
             {profile?.is_admin && (
               <button
                 onClick={() => setShowAdmin(true)}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer shadow-2xs"
+                className="whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer shadow-2xs"
               >
                 Admin
               </button>
             )}
             <button
-              onClick={resetActive}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer shadow-2xs"
+              onClick={handleResetActive}
+              className="whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer shadow-2xs"
             >
               Zurücksetzen
             </button>
             <button
               onClick={signOut}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer shadow-2xs"
+              className="whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer shadow-2xs"
             >
               Abmelden
             </button>
@@ -865,7 +916,7 @@ export function App() {
                 Umbenennen
               </button>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={active.id}
                 onChange={(e) => {
@@ -889,6 +940,12 @@ export function App() {
                 className="rounded-lg bg-blue-600 hover:bg-blue-700 px-3.5 py-1.5 text-xs font-bold text-white transition cursor-pointer shadow-2xs shrink-0"
               >
                 Speichern
+              </button>
+              <button
+                onClick={handleSaveAs}
+                className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs shrink-0"
+              >
+                Speichern unter...
               </button>
             </div>
           </div>
@@ -1007,7 +1064,7 @@ export function App() {
                       }
                     })}
                   />
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <NumberInput
                       label="Wohnfläche (m²)"
                       value={active.objekt.wohnflaeche}
@@ -1045,7 +1102,7 @@ export function App() {
                       })}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Select
                       label="Objekttyp"
                       value={active.objekt.objektTyp}
@@ -1187,7 +1244,7 @@ export function App() {
                     }}
                     options={Object.entries(BUNDESLAND_LABELS).map(([k, v]) => ({ value: k, label: v }))}
                   />
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <NumberInput
                       label="Grunderwerbsteuer"
                       value={active.knk.grestPct}
@@ -1302,7 +1359,7 @@ export function App() {
                       onChange={(val) => updateActive((d) => { d.finanzierung.equityAbsolute = val; })}
                     />
                   )}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Slider
                       label="Sollzins p. a."
                       value={active.finanzierung.sollzinsPct}
@@ -1322,7 +1379,7 @@ export function App() {
                       suffix="%"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Slider
                       label="Zinsbindung (Jahre)"
                       value={active.finanzierung.zinsbindungJahre}
@@ -1341,7 +1398,7 @@ export function App() {
                       suffix="%"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Slider
                       label={`Anschlusstilgung p. a.: ${active.finanzierung.anschlussTilgungPct !== null ? formatPercent(active.finanzierung.anschlussTilgungPct) : 'wie Anfangstilgung'}`}
                       value={active.finanzierung.anschlussTilgungPct ?? active.finanzierung.tilgungPct}
@@ -1376,7 +1433,7 @@ export function App() {
                       steigt die Rate.
                     </div>
                   )}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <NumberInput
                       label="Sondertilgung pro Jahr (€)"
                       value={active.finanzierung.sondertilgungProJahr}
@@ -1591,7 +1648,7 @@ export function App() {
                     <div className="h-32 w-full mt-4 bg-slate-50/50 rounded-xl p-2 border border-slate-100">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Vorschau Miete (monatlich €)</span>
                       <ResponsiveContainer width="100%" height="90%">
-                        <AreaChart data={rentChartData} margin={{ top: 2, right: 5, left: -25, bottom: 2 }}>
+                        <AreaChart data={rentChartData} margin={{ top: 2, right: 5, left: 0, bottom: 2 }}>
                           <defs>
                             <linearGradient id="colorMiete" x1="0" y1="0" x2="0" y2="1">
                               <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
@@ -1670,7 +1727,7 @@ export function App() {
                       onChange={(val) => updateActive((d) => { d.kosten.instandhaltungAbsolut = val; })}
                     />
                   )}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <NumberInput
                       label="Verwaltungskosten p. a."
                       value={active.kosten.verwaltungProJahr}
@@ -1772,7 +1829,7 @@ export function App() {
                       {formatPercent(computedMarginalRate)}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Toggle
                       label="Soli einbeziehen"
                       checked={active.steuer.soli}
@@ -1999,7 +2056,7 @@ export function App() {
                     <div className="h-32 w-full mt-4 bg-slate-50/50 rounded-xl p-2 border border-slate-100">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Vorschau Immobilienwert (€)</span>
                       <ResponsiveContainer width="100%" height="90%">
-                        <AreaChart data={valueChartData} margin={{ top: 2, right: 5, left: -15, bottom: 2 }}>
+                        <AreaChart data={valueChartData} margin={{ top: 2, right: 5, left: 0, bottom: 2 }}>
                           <defs>
                             <linearGradient id="colorWert" x1="0" y1="0" x2="0" y2="1">
                               <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2}/>
@@ -2039,7 +2096,7 @@ export function App() {
               </button>
               {openSection === 'exit' && (
                 <div className="border-t border-slate-100 px-5 py-5 space-y-4">
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <Slider
                       label="Haltedauer (Jahre)"
                       value={active.exit.haltedauerJahre}
@@ -2058,7 +2115,7 @@ export function App() {
                       suffix="%"
                     />
                     <Slider
-                      label="Vorfälligkeit (%)"
+                      label="Vorfälligkeit vor Zinsbindungsende (%)"
                       value={active.exit.vorfaelligkeitPct}
                       onChange={(val) => updateActive((d) => { d.exit.vorfaelligkeitPct = val; })}
                       min={0}
@@ -2096,6 +2153,30 @@ export function App() {
               <>
 
             {/* KPI Metrics Panel */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <KPICard
+                label="IRR p. a."
+                value={formatPercent(metrics.irr)}
+                trend={metrics.rating === 'green' ? 'positive' : metrics.rating === 'red' ? 'negative' : 'neutral'}
+                subtext={bestIrrExitYear ? `Bestes Jahr: ${bestIrrExitYear.jahr} (${formatPercent(bestIrrExitYear.irrPct)})` : 'Interner Zinsfuss'}
+                tooltip="IRR ist der interne Zinsfuss der Eigenkapital-Cashflows inklusive laufender Cashflows und Verkaufserloes."
+              />
+              <KPICard
+                label="Cashflow Monat"
+                value={formatEUR(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0)}
+                trend={(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0) >= 0 ? 'positive' : 'negative'}
+                subtext={(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0) >= 0 ? 'Ueberschuss nach Steuer' : 'Zuzahlung nach Steuer'}
+                tooltip="Monatlicher Netto-Cashflow im ersten Jahr nach Zinsen, Tilgung, nicht umlagefaehigen Kosten und Steuereffekt."
+              />
+              <KPICard
+                label="Netto-Exit"
+                value={formatEUR(exitRes.nettoVerkaufserloesNachSteuer)}
+                trend={exitRes.nettoVerkaufserloesNachSteuer >= cashBreakdown.totalCashInvestment ? 'positive' : 'negative'}
+                subtext={`nach ${active.exit.haltedauerJahre} Jahren`}
+                tooltip="Verkaufserloes nach Verkaufskosten, Restschuld, Vorfaelligkeit und Spekulationssteuer."
+              />
+            </div>
+
             <Card>
               <CardContent className="pt-5 space-y-1">
                 {/* Cashflow */}
@@ -2107,6 +2188,7 @@ export function App() {
                       value: formatEUR(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0),
                       color: (proj.years[0]?.cashflowNachSteuerMonatlich ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700',
                       desc: 'Monatlicher Überschuss bzw. Zuzahlungsbedarf nach Steuern',
+                      tooltip: 'Liquiditaet nach Steuereffekt. Tilgung ist ein Cash-Out, aber keine Werbungskosten.',
                     },
                     {
                       label: 'Cashflow vor Steuern / Monat',
@@ -2117,7 +2199,10 @@ export function App() {
                   ].map((kpi) => (
                     <div key={kpi.label} className="flex items-baseline justify-between py-2.5">
                       <div className="pr-4">
-                        <div className="text-sm font-semibold text-slate-700">{kpi.label}</div>
+                        <div className="flex items-center gap-1 text-sm font-semibold text-slate-700">
+                          <span>{kpi.label}</span>
+                          {'tooltip' in kpi && kpi.tooltip && <InfoTooltip content={kpi.tooltip} />}
+                        </div>
                         <div className="text-[11px] text-slate-400 mt-0.5">{kpi.desc}</div>
                       </div>
                       <span className={`text-base font-extrabold tabular-nums whitespace-nowrap ${kpi.color}`}>{kpi.value}</span>
@@ -2134,20 +2219,23 @@ export function App() {
                       value: formatPercent(metrics.irr),
                       color: metrics.rating === 'green' ? 'text-emerald-700' : metrics.rating === 'red' ? 'text-rose-700' : 'text-amber-600',
                       desc: 'Interner Zinsfuß auf den baren Kapitaleinsatz inkl. Verkauf',
+                      tooltip: 'IRR annualisiert alle Eigenkapital-Zahlungsstroeme: Start-Einsatz, laufende Cashflows und Netto-Verkaufserloes.',
                     },
                     {
                       label: 'Max. Profitabilität (IRR)',
-                      value: bestIrrExitYear ? `Jahr ${bestIrrExitYear.jahr}` : '–',
+                      value: bestIrrExitYear ? `Jahr ${bestIrrExitYear.jahr} · ${formatPercent(bestIrrExitYear.irrPct)}` : '–',
                       color: bestIrrExitYear && bestIrrExitYear.irrPct >= metrics.irr ? 'text-emerald-700' : 'text-slate-700',
                       desc: bestIrrExitYear
                         ? `Bester Verkauf innerhalb der Haltedauer: ${formatPercent(bestIrrExitYear.irrPct)} p. a.`
                         : 'Kein bestes Verkaufsjahr ermittelbar',
+                      tooltip: 'Das Exit-Jahr mit dem hoechsten IRR innerhalb der aktuell gewaehlten Haltedauer.',
                     },
                     {
                       label: 'Netto-Mietrendite',
                       value: formatPercent(metrics.nettomietrendite),
                       color: metrics.nettomietrendite >= 3.5 ? 'text-emerald-700' : 'text-slate-700',
                       desc: 'Jahresnettomiete abzgl. Bewirtschaftungskosten / Gesamterwerbskosten',
+                      tooltip: 'Jahreskaltmiete abzüglich nicht umlagefaehiger Kosten geteilt durch Kaufpreis plus Kaufnebenkosten.',
                     },
                     {
                       label: 'Brutto-Mietrendite',
@@ -2164,7 +2252,10 @@ export function App() {
                   ].map((kpi) => (
                     <div key={kpi.label} className="flex items-baseline justify-between py-2.5">
                       <div className="pr-4">
-                        <div className="text-sm font-semibold text-slate-700">{kpi.label}</div>
+                        <div className="flex items-center gap-1 text-sm font-semibold text-slate-700">
+                          <span>{kpi.label}</span>
+                          {'tooltip' in kpi && kpi.tooltip && <InfoTooltip content={kpi.tooltip} />}
+                        </div>
                         <div className="text-[11px] text-slate-400 mt-0.5">{kpi.desc}</div>
                       </div>
                       <span className={`text-base font-extrabold tabular-nums whitespace-nowrap ${kpi.color}`}>{kpi.value}</span>
@@ -2181,6 +2272,7 @@ export function App() {
                       value: `${formatNumber(metrics.kaufpreisfaktor, 1)}x`,
                       color: 'text-slate-700',
                       desc: 'Kaufpreis / Jahreskaltmiete',
+                      tooltip: 'Vervielfaeltiger: Kaufpreis geteilt durch Jahreskaltmiete. Niedriger ist bei sonst gleichen Annahmen guenstiger.',
                     },
                     {
                       label: `Nettovermögen (nach ${active.exit.haltedauerJahre} J.)`,
@@ -2191,7 +2283,10 @@ export function App() {
                   ].map((kpi) => (
                     <div key={kpi.label} className="flex items-baseline justify-between py-2.5">
                       <div className="pr-4">
-                        <div className="text-sm font-semibold text-slate-700">{kpi.label}</div>
+                        <div className="flex items-center gap-1 text-sm font-semibold text-slate-700">
+                          <span>{kpi.label}</span>
+                          {'tooltip' in kpi && kpi.tooltip && <InfoTooltip content={kpi.tooltip} />}
+                        </div>
                         <div className="text-[11px] text-slate-400 mt-0.5">{kpi.desc}</div>
                       </div>
                       <span className={`text-base font-extrabold tabular-nums whitespace-nowrap ${kpi.color}`}>{kpi.value}</span>
@@ -2203,14 +2298,20 @@ export function App() {
 
             {/* Warnings Alert Box */}
             {warnings.length > 0 && (
-              <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-4 text-xs font-medium text-amber-800 space-y-2">
-                <div className="flex items-center gap-1.5 font-bold text-amber-900">
+              <div className={`rounded-xl border p-4 text-xs font-medium space-y-2 ${
+                warnings.some((w) => w.severity === 'danger')
+                  ? 'border-rose-100 bg-rose-50/40 text-rose-800'
+                  : 'border-amber-100 bg-amber-50/40 text-amber-800'
+              }`}>
+                <div className={`flex items-center gap-1.5 font-bold ${
+                  warnings.some((w) => w.severity === 'danger') ? 'text-rose-900' : 'text-amber-900'
+                }`}>
                   <AlertTriangle size={15} />
                   <span>Hinweise & Risiken</span>
                 </div>
                 <ul className="list-disc pl-4 space-y-1">
                   {warnings.map((w, idx) => (
-                    <li key={idx}>{w}</li>
+                    <li key={idx} className={w.severity === 'danger' ? 'font-semibold' : ''}>{w.message}</li>
                   ))}
                 </ul>
               </div>
@@ -2280,7 +2381,7 @@ export function App() {
               <CardContent className="h-80 min-h-[320px] pt-1">
                 {activeChartTab === 'cashflow' && (
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={cashflowChartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                    <ComposedChart data={cashflowChartData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="Jahr" fontSize={10} stroke="#94a3b8" />
                       <YAxis fontSize={10} stroke="#94a3b8" />
@@ -2298,7 +2399,7 @@ export function App() {
 
                 {activeChartTab === 'wealth' && (
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={wealthChartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                    <AreaChart data={wealthChartData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="Jahr" fontSize={10} stroke="#94a3b8" />
                       <YAxis fontSize={10} stroke="#94a3b8" tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
@@ -2313,7 +2414,7 @@ export function App() {
 
                 {activeChartTab === 'taxes' && (
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={taxChartData} margin={{ top: 10, right: 10, left: -15, bottom: 5 }}>
+                    <ComposedChart data={taxChartData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="Jahr" fontSize={10} stroke="#94a3b8" />
                       <YAxis fontSize={10} stroke="#94a3b8" />
@@ -2327,7 +2428,7 @@ export function App() {
 
                 {activeChartTab === 'amortization' && (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={amortizationChartData} margin={{ top: 10, right: 10, left: -15, bottom: 5 }}>
+                    <BarChart data={amortizationChartData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="Jahr" fontSize={10} stroke="#94a3b8" />
                       <YAxis fontSize={10} stroke="#94a3b8" />
@@ -2349,7 +2450,7 @@ export function App() {
                 <CardDescription>Projektion des Verkaufs und eventueller Steuerlasten</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="space-y-0.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Verkaufspreis</span>
                     <p className="text-sm font-bold text-slate-800 tabular-nums">{formatEUR(exitRes.verkaufspreis)}</p>
@@ -2359,7 +2460,10 @@ export function App() {
                     <p className="text-sm font-bold text-slate-800 tabular-nums">{formatEUR(exitRes.restschuld)}</p>
                   </div>
                   <div className="space-y-0.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Spekulationssteuer</span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Spekulationssteuer
+                      <InfoTooltip content="Steuer auf private Veraeusserungsgewinne innerhalb der 10-Jahres-Frist nach §23 EStG; im Einkommensteuer-Modus als Tarifdifferenz inklusive Ergebnis aus Vermietung und Verpachtung (V&V) des Verkaufsjahrs." />
+                    </span>
                     <p className={`text-sm font-bold tabular-nums ${exitRes.spekulationssteuer > 0 ? 'text-rose-600' : 'text-slate-800'}`}>
                       {formatEUR(exitRes.spekulationssteuer)}
                     </p>
@@ -2391,7 +2495,7 @@ export function App() {
                   <table className="w-full border-collapse text-left text-xs font-medium text-slate-600">
                     <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
                       <tr className="text-slate-500">
-                        <th className="px-4 py-3">Jahr</th>
+                        <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3">Jahr</th>
                         <th className="px-4 py-3">Kaltmiete (netto)</th>
                         <th className="px-4 py-3">Annuität</th>
                         <th className="px-4 py-3">Zinsen</th>
@@ -2404,7 +2508,7 @@ export function App() {
                     <tbody className="divide-y divide-slate-100 font-medium tabular-nums text-slate-700">
                       {proj.years.map((year) => (
                         <tr key={year.jahr} className="hover:bg-slate-50/50">
-                          <td className="px-4 py-3 font-semibold text-slate-900">{year.jahr}</td>
+                          <td className="sticky left-0 bg-white px-4 py-3 font-semibold text-slate-900">{year.jahr}</td>
                           <td className="px-4 py-3">{formatEUR(year.nettoKaltmiete)}</td>
                           <td className="px-4 py-3">{formatEUR(year.annuitaet)}</td>
                           <td className="px-4 py-3 text-rose-600">{formatEUR(year.zins)}</td>
@@ -2439,7 +2543,7 @@ export function App() {
                       <table className="w-full border-collapse text-left text-xs font-medium text-slate-600">
                         <thead>
                           <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
-                            <th className="px-4 py-3 min-w-[180px]">Metrik</th>
+                            <th className="sticky left-0 z-20 min-w-[180px] bg-slate-50 px-4 py-3">Metrik</th>
                             {comparisonData.map(d => (
                               <th key={d.id} className={`px-4 py-3 text-right min-w-[140px] ${d.id === active.id ? 'bg-blue-50/50 text-blue-800 font-extrabold' : ''}`}>
                                 {d.name} {d.id === active.id ? '(Aktiv)' : ''}
@@ -2449,7 +2553,7 @@ export function App() {
                         </thead>
                         <tbody className="divide-y divide-slate-100 tabular-nums">
                           <tr className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-700">Kaufpreis</td>
+                            <td className="sticky left-0 bg-white px-4 py-3 font-semibold text-slate-700">Kaufpreis</td>
                             {comparisonData.map(d => (
                               <td key={d.id} className={`px-4 py-3 text-right text-slate-900 ${d.id === active.id ? 'bg-blue-50/20 font-bold' : ''}`}>
                                 {formatEUR(d.kaufpreis)}
@@ -2457,7 +2561,7 @@ export function App() {
                             ))}
                           </tr>
                           <tr className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-700">Gesamterwerbskosten</td>
+                            <td className="sticky left-0 bg-white px-4 py-3 font-semibold text-slate-700">Gesamterwerbskosten</td>
                             {comparisonData.map(d => (
                               <td key={d.id} className={`px-4 py-3 text-right text-slate-900 ${d.id === active.id ? 'bg-blue-50/20' : ''}`}>
                                 {formatEUR(d.totalInvest)}
@@ -2465,7 +2569,7 @@ export function App() {
                             ))}
                           </tr>
                           <tr className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-700">Eigenkapitaleinsatz</td>
+                            <td className="sticky left-0 bg-white px-4 py-3 font-semibold text-slate-700">Eigenkapitaleinsatz</td>
                             {comparisonData.map(d => (
                               <td key={d.id} className={`px-4 py-3 text-right text-slate-900 ${d.id === active.id ? 'bg-blue-50/20 font-bold' : ''}`}>
                                 {formatEUR(d.equity)}
@@ -2473,7 +2577,7 @@ export function App() {
                             ))}
                           </tr>
                           <tr className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-700">Darlehenssumme</td>
+                            <td className="sticky left-0 bg-white px-4 py-3 font-semibold text-slate-700">Darlehenssumme</td>
                             {comparisonData.map(d => (
                               <td key={d.id} className={`px-4 py-3 text-right text-slate-900 ${d.id === active.id ? 'bg-blue-50/20' : ''}`}>
                                 {formatEUR(d.loan)}
@@ -2481,7 +2585,7 @@ export function App() {
                             ))}
                           </tr>
                           <tr className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-700">Sollzins p. a.</td>
+                            <td className="sticky left-0 bg-white px-4 py-3 font-semibold text-slate-700">Sollzins p. a.</td>
                             {comparisonData.map(d => (
                               <td key={d.id} className={`px-4 py-3 text-right text-slate-900 ${d.id === active.id ? 'bg-blue-50/20' : ''}`}>
                                 {formatPercent(d.sollzins)}
@@ -2489,7 +2593,7 @@ export function App() {
                             ))}
                           </tr>
                           <tr className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-700">Zinsbindung</td>
+                            <td className="sticky left-0 bg-white px-4 py-3 font-semibold text-slate-700">Zinsbindung</td>
                             {comparisonData.map(d => (
                               <td key={d.id} className={`px-4 py-3 text-right text-slate-900 ${d.id === active.id ? 'bg-blue-50/20' : ''}`}>
                                 {d.zinsbindung} Jahre
@@ -2497,7 +2601,7 @@ export function App() {
                             ))}
                           </tr>
                           <tr className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-700">CF n. St. / Monat (J. 1)</td>
+                            <td className="sticky left-0 bg-white px-4 py-3 font-semibold text-slate-700">CF n. St. / Monat (J. 1)</td>
                             {comparisonData.map(d => (
                               <td key={d.id} className={`px-4 py-3 text-right font-semibold ${d.id === active.id ? 'bg-blue-50/20' : ''} ${d.cf1 >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                 {formatEUR(d.cf1)}
@@ -2505,7 +2609,7 @@ export function App() {
                             ))}
                           </tr>
                           <tr className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-700">Netto-Mietrendite</td>
+                            <td className="sticky left-0 bg-white px-4 py-3 font-semibold text-slate-700">Netto-Mietrendite</td>
                             {comparisonData.map(d => (
                               <td key={d.id} className={`px-4 py-3 text-right text-slate-900 ${d.id === active.id ? 'bg-blue-50/20 font-bold' : ''}`}>
                                 {formatPercent(d.nettoMietrendite)}
@@ -2513,7 +2617,7 @@ export function App() {
                             ))}
                           </tr>
                           <tr className="hover:bg-slate-50/50 bg-slate-50/30">
-                            <td className="px-4 py-3 font-bold text-slate-800">Gesamtrendite (IRR)</td>
+                            <td className="sticky left-0 bg-slate-50 px-4 py-3 font-bold text-slate-800">Gesamtrendite (IRR)</td>
                             {comparisonData.map(d => (
                               <td key={d.id} className={`px-4 py-3 text-right text-blue-700 font-extrabold ${d.id === active.id ? 'bg-blue-50/30 text-base' : ''}`}>
                                 {formatPercent(d.irr)} p. a.
@@ -2521,7 +2625,7 @@ export function App() {
                             ))}
                           </tr>
                           <tr className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-700">Nettovermögen (Exit-Jahr)</td>
+                            <td className="sticky left-0 bg-white px-4 py-3 font-semibold text-slate-700">Nettovermögen (Exit-Jahr)</td>
                             {comparisonData.map(d => (
                               <td key={d.id} className={`px-4 py-3 text-right text-slate-900 ${d.id === active.id ? 'bg-blue-50/20 font-bold' : ''}`}>
                                 {formatEUR(d.netWealth)}
@@ -2529,7 +2633,7 @@ export function App() {
                             ))}
                           </tr>
                           <tr className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-700">Netto-Exit-Erlös n. St.</td>
+                            <td className="sticky left-0 bg-white px-4 py-3 font-semibold text-slate-700">Netto-Exit-Erlös n. St.</td>
                             {comparisonData.map(d => (
                               <td key={d.id} className={`px-4 py-3 text-right text-slate-900 ${d.id === active.id ? 'bg-blue-50/20' : ''}`}>
                                 {formatEUR(d.netExit)}
@@ -2561,7 +2665,7 @@ export function App() {
                   </CardHeader>
                   <CardContent className="space-y-6">
                     {/* Live Comparison KPI Cards */}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Cashflow n. St. / Monat (J. 1)</span>
                         <div className="flex items-baseline gap-2 mt-1">
@@ -2591,7 +2695,7 @@ export function App() {
                     </div>
 
                     {/* Sliders Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <Slider
                         label={`Sollzins p. a.: ${formatPercent(currentSollzins)}`}
                         value={currentSollzins}
@@ -2656,11 +2760,11 @@ export function App() {
                         <BarChart
                           data={tornadoChartData}
                           layout="vertical"
-                          margin={{ top: 20, right: 30, left: 10, bottom: 5 }}
+                          margin={{ top: 20, right: 20, left: 0, bottom: 5 }}
                         >
                           <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
                           <XAxis type="number" domain={['auto', 'auto']} tickFormatter={(v) => `${v.toFixed(1)}%`} fontSize={10} />
-                          <YAxis type="category" dataKey="label" fontSize={10} width={130} />
+                          <YAxis type="category" dataKey="label" fontSize={10} width={96} />
                           <RechartsTooltip
                             formatter={(value: unknown) => {
                               const range = value as number[];
@@ -2704,7 +2808,7 @@ export function App() {
                     />
 
                     {/* KPI Comparison Cards */}
-                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Eigenkapital + Zuzahlung</span>
                         <p className="text-sm font-bold text-slate-800 mt-1 tabular-nums">{formatEUR(etfComparison.totalInvested)}</p>
@@ -2748,7 +2852,7 @@ export function App() {
                     <div className="border-t border-slate-100 pt-6">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Entwicklungsvergleich (Immobilie vs. ETF)</h4>
                       <ResponsiveContainer width="100%" height={260}>
-                        <AreaChart data={etfHistoryData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                        <AreaChart data={etfHistoryData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                           <XAxis dataKey="Jahr" fontSize={10} stroke="#94a3b8" />
                           <YAxis fontSize={10} stroke="#94a3b8" tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
@@ -2816,7 +2920,7 @@ export function App() {
                             gesamtgewinn: y.gesamtgewinn,
                             irr: y.irrPct,
                           }))}
-                          margin={{ top: 10, right: 10, left: -5, bottom: 5 }}
+                          margin={{ top: 10, right: 10, left: 0, bottom: 5 }}
                         >
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                           <XAxis dataKey="jahr" fontSize={10} stroke="#94a3b8" />
@@ -2852,7 +2956,7 @@ export function App() {
                         <table className="w-full text-xs tabular-nums">
                           <thead>
                             <tr className="text-left text-slate-400 border-b border-slate-200">
-                              <th className="py-2 pr-3 font-semibold">Jahr</th>
+                              <th className="sticky left-0 z-20 bg-white py-2 pr-3 font-semibold">Jahr</th>
                               <th className="py-2 px-3 font-semibold text-right">Immobilienwert</th>
                               <th className="py-2 px-3 font-semibold text-right">Restschuld</th>
                               <th className="py-2 px-3 font-semibold text-right">Netto-Erlös</th>
@@ -2879,7 +2983,7 @@ export function App() {
                                   key={y.jahr}
                                   className={`border-b border-slate-50 ${isChosen ? 'bg-blue-50/70 font-semibold' : ''}`}
                                 >
-                                  <td className="py-1.5 pr-3">
+                                  <td className={`sticky left-0 py-1.5 pr-3 ${isChosen ? 'bg-blue-50' : 'bg-white'}`}>
                                     {y.jahr}
                                     {y.jahr === 10 && <span className="ml-1 text-[9px] text-blue-500">(steuerfrei)</span>}
                                   </td>
@@ -2918,15 +3022,15 @@ export function App() {
             )}
 
             {/* Disclaimer Block */}
-            <div className="rounded-xl border border-slate-200 bg-white p-4 text-[10px] text-slate-400 font-medium space-y-1 shadow-2xs">
-              <div className="flex items-center gap-1 font-bold text-slate-500 uppercase tracking-wider">
-                <Info size={12} />
+            <div className="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-600 font-medium space-y-1.5 shadow-2xs">
+              <div className="flex items-center gap-1 font-bold text-slate-700 uppercase tracking-wider">
+                <Info size={14} />
                 <span>Disclaimer / Haftungsausschluss</span>
               </div>
               <p>
                 Diese Anwendung dient ausschließlich zu Simulations- und Informationszwecken. Die berechneten Werte stellen keine steuerliche, rechtliche oder finanzielle Beratung dar. Gesetzliche Regelungen (wie EStG, Spekulationssteuer oder Abschreibungen) basieren auf den gesetzlichen Rahmenbedingungen für das Steuerjahr 2026. Eine Gewähr für die Richtigkeit, Aktualität oder Vollständigkeit der Daten wird nicht übernommen. Investitionsentscheidungen sollten immer unabhängig geprüft werden.
               </p>
-              <div className="pt-1 font-bold text-slate-500 uppercase tracking-wider">Annahmen &amp; Vereinfachungen</div>
+              <div className="pt-1 font-bold text-slate-700 uppercase tracking-wider">Annahmen &amp; Vereinfachungen</div>
               <ul className="list-disc pl-4 space-y-0.5">
                 <li>Steuer-/AfA-Stand: Veranlagungsjahr 2026 (ESt-Tarif §32a, Grunderwerbsteuer je Bundesland, AfA-Sätze). Alle Werte in der UI editierbar.</li>
                 <li>Steuereffekt aus Vermietung &amp; Verpachtung über den Tarif-Unterschied (mit/ohne V&amp;V) bzw. wahlweise über einen festen Grenzsteuersatz; nur Schuldzinsen, AfA und nicht-umlagefähige Kosten sind Werbungskosten (Tilgung nicht).</li>

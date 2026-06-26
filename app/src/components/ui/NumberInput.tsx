@@ -14,6 +14,7 @@ interface NumberInputProps {
   error?: string;
   placeholder?: string;
   fractionDigits?: number;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
 }
 
 export function NumberInput({
@@ -29,6 +30,7 @@ export function NumberInput({
   error,
   placeholder = '',
   fractionDigits = 0,
+  inputMode = 'decimal',
 }: NumberInputProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [localValue, setLocalValue] = useState('');
@@ -116,9 +118,10 @@ export function NumberInput({
           onChange={handleChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          inputMode={inputMode}
           step={step}
           placeholder={placeholder}
-          className={`w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 transition-all duration-200 placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:outline-hidden ${
+          className={`w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-base text-slate-800 transition-all duration-200 placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:outline-hidden sm:text-sm ${
             error ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : ''
           }`}
         />

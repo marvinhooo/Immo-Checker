@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface TooltipProps {
   content: string | React.ReactNode;
@@ -13,6 +13,8 @@ export function Tooltip({
   position = 'top',
   className = '',
 }: TooltipProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
   const positionClasses = {
     top: 'bottom-full left-1/2 -translate-x-1/2 mb-2',
     bottom: 'top-full left-1/2 -translate-x-1/2 mt-2',
@@ -28,10 +30,20 @@ export function Tooltip({
   };
 
   return (
-    <div className={`group relative inline-block ${className}`}>
+    <div
+      className={`group relative inline-block ${className}`}
+      onClick={() => setIsOpen((open) => !open)}
+      onBlur={(event) => {
+        const nextTarget = event.relatedTarget;
+        if (!nextTarget || !event.currentTarget.contains(nextTarget as Node)) {
+          setIsOpen(false);
+        }
+      }}
+      onMouseLeave={() => setIsOpen(false)}
+    >
       {children}
       <div
-        className={`pointer-events-none absolute z-50 hidden group-hover:block group-focus-within:block w-48 rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-md transition-opacity duration-200 ${positionClasses[position]}`}
+        className={`pointer-events-none absolute z-50 w-48 rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-md transition-opacity duration-200 ${isOpen ? 'block' : 'hidden group-hover:block group-focus-within:block'} ${positionClasses[position]}`}
         role="tooltip"
       >
         {content}

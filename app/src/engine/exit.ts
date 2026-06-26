@@ -69,9 +69,9 @@ export function calculateExit(scenario: Scenario, projection?: ProjectionResult)
         kirchensteuerPct
       );
     } else {
-      const zvE = Math.max(0, bruttoJahresEinkommen);
-      const t1 = calculateTotalTax(zvE, veranlagung === 'splitting', soli, kirchensteuerPct);
-      const t2 = calculateTotalTax(zvE + steuerpflichtigerSpekulationsGewinn, veranlagung === 'splitting', soli, kirchensteuerPct);
+      const zvEAfterSaleYearVv = bruttoJahresEinkommen + yearData.vvErgebnis;
+      const t1 = calculateTotalTax(Math.max(0, zvEAfterSaleYearVv), veranlagung === 'splitting', soli, kirchensteuerPct);
+      const t2 = calculateTotalTax(Math.max(0, zvEAfterSaleYearVv + steuerpflichtigerSpekulationsGewinn), veranlagung === 'splitting', soli, kirchensteuerPct);
       spekulationssteuer = t2 - t1;
     }
   }

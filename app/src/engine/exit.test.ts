@@ -208,7 +208,7 @@ describe('Exit calculation Engine', () => {
     expect(exitRes.spekulationssteuer).toBeCloseTo(400, 2);
   });
 
-  it('includes Soli and Kirchensteuer in flat-rate speculation tax', () => {
+  it('applies Kirchensteuer but no Soli below the flat-rate speculation tax freigrenze', () => {
     const scenario = createDefaultScenario({
       objekt: {
         kaufpreis: 100000,
@@ -264,7 +264,7 @@ describe('Exit calculation Engine', () => {
     const baseTax = exitRes.spekulationsGewinn * 0.4;
 
     expect(exitRes.spekulationsGewinn).toBeCloseTo(1000, 2);
-    expect(exitRes.spekulationssteuer).toBeCloseTo(baseTax * (1 + 0.055 + 0.09), 2);
+    expect(exitRes.spekulationssteuer).toBeCloseTo(baseTax * 1.09, 2);
   });
 
   it('deducts renovation costs from the speculation gain basis', () => {

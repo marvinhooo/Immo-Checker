@@ -1,7 +1,7 @@
 import { Scenario } from './types';
 import { runProjection, ProjectionResult } from './projection';
 import { knkAmount } from './derive';
-import { applyFlatTaxSurcharges, calculateTotalTax } from './tax';
+import { applyFlatTaxSurchargesWithSoliFreigrenze, calculateTotalTax } from './tax';
 
 export interface ExitResult {
   verkaufspreis: number;
@@ -63,10 +63,11 @@ export function calculateExit(scenario: Scenario, projection?: ProjectionResult)
   if (steuerpflichtigerSpekulationsGewinn > 0) {
     const { taxMode, bruttoJahresEinkommen, grenzsteuersatzPct, veranlagung, soli, kirchensteuerPct } = scenario.steuer;
     if (taxMode === 'marginalRate') {
-      spekulationssteuer = applyFlatTaxSurcharges(
+      spekulationssteuer = applyFlatTaxSurchargesWithSoliFreigrenze(
         steuerpflichtigerSpekulationsGewinn * (grenzsteuersatzPct / 100),
         soli,
-        kirchensteuerPct
+        kirchensteuerPct,
+        veranlagung === 'splitting'
       );
     } else {
       const zvEAfterSaleYearVv = bruttoJahresEinkommen + yearData.vvErgebnis;

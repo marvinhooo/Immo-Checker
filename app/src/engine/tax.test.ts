@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { incomeTax, calculateTotalTax, marginalRate, calculateTaxEffect } from './tax';
+import {
+  incomeTax,
+  calculateTotalTax,
+  marginalRate,
+  calculateTaxEffect,
+  applyFlatTaxSurchargesWithSoliFreigrenze,
+} from './tax';
 import { createDefaultScenario } from './defaults';
 
 describe('tax engine - incomeTax', () => {
@@ -57,6 +63,20 @@ describe('tax engine - calculateTotalTax', () => {
     const est = incomeTax(50000, 'single');
     const totalTax = calculateTotalTax(50000, false, false, 9); // kist = 9%
     expect(totalTax).toBeCloseTo(est * 1.09, 2);
+  });
+
+  it('should apply Soli freigrenze to flat speculation-tax surcharges', () => {
+    expect(applyFlatTaxSurchargesWithSoliFreigrenze(400, true, 9, false)).toBeCloseTo(436, 2);
+
+    const baseTaxInSoliTransition = 21000;
+    const expectedSoli = Math.trunc(Math.min(
+      baseTaxInSoliTransition * 0.055,
+      (baseTaxInSoliTransition - 20350) * 0.119
+    ) * 100) / 100;
+
+    expect(applyFlatTaxSurchargesWithSoliFreigrenze(baseTaxInSoliTransition, true, 0, false))
+      .toBeCloseTo(baseTaxInSoliTransition + expectedSoli, 2);
+    expect(applyFlatTaxSurchargesWithSoliFreigrenze(21000, true, 0, true)).toBe(21000);
   });
 });
 

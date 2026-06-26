@@ -35,6 +35,14 @@ export function incomeTax(zvE: number, veranlagung: 'single' | 'splitting' = 'si
   return Math.floor(incomeTaxRaw(zvE, veranlagung));
 }
 
+function calculateSoliFromIncomeTax(est: number, splitting: boolean): number {
+  const freigrenze = splitting ? 40700 : 20350;
+  if (est <= freigrenze) return 0;
+
+  const soli = Math.min(0.055 * est, 0.119 * (est - freigrenze));
+  return Math.trunc(soli * 100) / 100;
+}
+
 /**
  * Calculates the total tax including Einkommensteuer, optional Solidaritaetszuschlag (Soli),
  * and optional Kirchensteuer.
@@ -47,15 +55,7 @@ export function calculateTotalTax(
 ): number {
   const est = incomeTax(zvE, splitting ? 'splitting' : 'single');
   
-  let soli = 0;
-  if (useSoli) {
-    const freigrenze = splitting ? 40700 : 20350;
-    if (est > freigrenze) {
-      soli = Math.min(0.055 * est, 0.119 * (est - freigrenze));
-      soli = Math.trunc(soli * 100) / 100;
-    }
-  }
-
+  const soli = useSoli ? calculateSoliFromIncomeTax(est, splitting) : 0;
   const kist = (kirchensteuerPct / 100) * est;
   
   return est + soli + kist;
@@ -69,6 +69,19 @@ export function applyFlatTaxSurcharges(
   const soli = useSoli ? baseIncomeTaxAmount * 0.055 : 0;
   const kist = (kirchensteuerPct / 100) * baseIncomeTaxAmount;
   return baseIncomeTaxAmount + soli + kist;
+}
+
+export function applyFlatTaxSurchargesWithSoliFreigrenze(
+  baseIncomeTaxAmount: number,
+  useSoli: boolean,
+  kirchensteuerPct: number,
+  splitting: boolean
+): number {
+  const sign = baseIncomeTaxAmount < 0 ? -1 : 1;
+  const absBaseIncomeTax = Math.abs(baseIncomeTaxAmount);
+  const soli = useSoli ? calculateSoliFromIncomeTax(absBaseIncomeTax, splitting) : 0;
+  const kist = (kirchensteuerPct / 100) * absBaseIncomeTax;
+  return sign * (absBaseIncomeTax + soli + kist);
 }
 
 /**

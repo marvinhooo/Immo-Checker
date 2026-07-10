@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { Fragment, useState, useMemo, useEffect, useRef } from 'react';
 import { useScenarioStore, useSyncedSave, useSyncedDelete } from '../store/scenarioStore';
 import { useAuthStore } from '../store/authStore';
 import { AdminPanel } from '../components/admin/AdminPanel';
@@ -17,7 +17,11 @@ import { buildAmortizationSchedule } from '../engine/financing';
 import { calculateMetrics } from '../engine/metrics';
 import { calculateExit } from '../engine/exit';
 import { analyzeHoldingPeriods } from '../engine/holding';
-import { assessRentAgainstMietspiegel } from '../engine/rent';
+import {
+  assessRentAgainstMietspiegel,
+  calculateRentRuleResults,
+  rentPerSqmInCents,
+} from '../engine/rent';
 import {
   runSensitivity,
   generateTornadoData,
@@ -68,6 +72,7 @@ import {
   CartesianGrid,
   Legend,
   ComposedChart,
+  ReferenceArea,
   ReferenceLine,
 } from 'recharts';
 import { Plus, Trash2, Download, AlertTriangle, CheckCircle, Info } from 'lucide-react';
@@ -524,9 +529,18 @@ export function App() {
     const rentSeries = projectSeries(rentBase, active.miete.steigerungen, active.exit.haltedauerJahre);
     return rentSeries.map((val, idx) => ({
       Jahr: idx + 1,
-      Miete: Math.round(val),
+      Miete: val,
     }));
   }, [rentBase, active.miete.steigerungen, active.exit.haltedauerJahre]);
+
+  const rentRuleResults = useMemo(
+    () => calculateRentRuleResults(
+      rentBase,
+      active.objekt.wohnflaeche,
+      active.miete.steigerungen
+    ),
+    [rentBase, active.objekt.wohnflaeche, active.miete.steigerungen]
+  );
 
   const mietspiegelAssessment = useMemo(
     () => assessRentAgainstMietspiegel(
@@ -535,6 +549,45 @@ export function App() {
     ),
     [active.miete.kaltmieteProSqm, active.miete.mietspiegel]
   );
+
+  const mietspiegelChartValues = useMemo(() => {
+    if (
+      mietspiegelAssessment.status === 'incomplete' ||
+      mietspiegelAssessment.status === 'invalid' ||
+      !Number.isFinite(active.objekt.wohnflaeche) ||
+      active.objekt.wohnflaeche <= 0
+    ) {
+      return null;
+    }
+
+    const createValue = (label: string, proSqm: number, color: string) => {
+      const roundedProSqm = rentPerSqmInCents(proSqm) / 100;
+      return {
+        label,
+        proSqm: roundedProSqm,
+        totalProMonat: roundedProSqm * active.objekt.wohnflaeche,
+        color,
+      };
+    };
+
+    return {
+      lower: createValue(
+        'Unterer Spannwert',
+        active.miete.mietspiegel.untererSpannwertProSqm,
+        '#0f766e'
+      ),
+      mean: createValue(
+        'Mittelwert',
+        active.miete.mietspiegel.mittelwertProSqm,
+        '#7c3aed'
+      ),
+      upper: createValue(
+        'Oberer Spannwert',
+        active.miete.mietspiegel.obererSpannwertProSqm,
+        '#e11d48'
+      ),
+    };
+  }, [active.objekt.wohnflaeche, active.miete.mietspiegel, mietspiegelAssessment.status]);
 
   const mietspiegelStatusView = useMemo(() => {
     const rent = formatNumber(active.miete.kaltmieteProSqm, 2);
@@ -1704,67 +1757,100 @@ export function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                          {active.miete.steigerungen.map((rule) => (
-                            <tr key={rule.id} className="hover:bg-slate-50/50">
-                              <td className="px-3 py-1.5">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max="50"
-                                  value={rule.fromYear}
-                                  onChange={(e) => handleUpdateMieteRule(rule.id, { fromYear: parseInt(e.target.value) || 1 })}
-                                  className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs text-center focus:border-blue-500 focus:outline-none"
-                                />
-                              </td>
-                              <td className="px-3 py-1.5">
-                                <select
-                                  value={rule.kind}
-                                  onChange={(e) => {
-                                    const k = e.target.value as 'step' | 'rate';
-                                    if (k === 'step') {
-                                      handleUpdateMieteRule(rule.id, { kind: k, percent: 1.0 });
-                                    } else {
-                                      handleUpdateMieteRule(rule.id, { kind: k, percentPerYear: 1.0 });
-                                    }
-                                  }}
-                                  className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs focus:border-blue-500 focus:outline-none"
-                                >
-                                  <option value="rate">jährlich (p. a.)</option>
-                                  <option value="step">einmalig (Stufe)</option>
-                                </select>
-                              </td>
-                              <td className="px-3 py-1.5">
-                                <div className="relative flex items-center">
-                                  <input
-                                    type="number"
-                                    min="-100"
-                                    max="100"
-                                    step="0.1"
-                                    value={rule.kind === 'rate' ? rule.percentPerYear : rule.percent}
-                                    onChange={(e) => {
-                                      const val = parseFloat(e.target.value) || 0;
-                                      if (rule.kind === 'rate') {
-                                        handleUpdateMieteRule(rule.id, { percentPerYear: val });
-                                      } else {
-                                        handleUpdateMieteRule(rule.id, { percent: val });
-                                      }
-                                    }}
-                                    className="w-full rounded border border-slate-200 pl-1 pr-4 py-0.5 text-xs text-right focus:border-blue-500 focus:outline-none"
-                                  />
-                                  <span className="absolute right-1 text-[10px] text-slate-400 font-bold">%</span>
-                                </div>
-                              </td>
-                              <td className="px-3 py-1.5 text-right">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteMieteRule(rule.id)}
-                                  className="text-slate-400 hover:text-rose-600 transition cursor-pointer inline-flex justify-center items-center"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
+                          {active.miete.steigerungen.map((rule, ruleIndex) => {
+                            const ruleResult = rentRuleResults[ruleIndex];
+                            return (
+                              <Fragment key={`${rule.id}-${ruleIndex}`}>
+                                <tr className="hover:bg-slate-50/50">
+                                  <td className="px-3 py-1.5">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="50"
+                                      value={rule.fromYear}
+                                      onChange={(e) => handleUpdateMieteRule(rule.id, { fromYear: parseInt(e.target.value) || 1 })}
+                                      className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs text-center focus:border-blue-500 focus:outline-none"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-1.5">
+                                    <select
+                                      value={rule.kind}
+                                      onChange={(e) => {
+                                        const k = e.target.value as 'step' | 'rate';
+                                        if (k === 'step') {
+                                          handleUpdateMieteRule(rule.id, { kind: k, percent: 1.0 });
+                                        } else {
+                                          handleUpdateMieteRule(rule.id, { kind: k, percentPerYear: 1.0 });
+                                        }
+                                      }}
+                                      className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs focus:border-blue-500 focus:outline-none"
+                                    >
+                                      <option value="rate">jährlich (p. a.)</option>
+                                      <option value="step">einmalig (Stufe)</option>
+                                    </select>
+                                  </td>
+                                  <td className="px-3 py-1.5">
+                                    <div className="relative flex items-center">
+                                      <input
+                                        type="number"
+                                        min="-100"
+                                        max="100"
+                                        step="0.1"
+                                        value={rule.kind === 'rate' ? rule.percentPerYear : rule.percent}
+                                        onChange={(e) => {
+                                          const val = parseFloat(e.target.value) || 0;
+                                          if (rule.kind === 'rate') {
+                                            handleUpdateMieteRule(rule.id, { percentPerYear: val });
+                                          } else {
+                                            handleUpdateMieteRule(rule.id, { percent: val });
+                                          }
+                                        }}
+                                        className="w-full rounded border border-slate-200 pl-1 pr-4 py-0.5 text-xs text-right focus:border-blue-500 focus:outline-none"
+                                      />
+                                      <span className="absolute right-1 text-[10px] text-slate-400 font-bold">%</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-1.5 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteMieteRule(rule.id)}
+                                      className="text-slate-400 hover:text-rose-600 transition cursor-pointer inline-flex justify-center items-center"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </td>
+                                </tr>
+                                {ruleResult && (
+                                  <tr className="bg-slate-50/70">
+                                    <td colSpan={4} className="px-3 py-1.5 text-[10px] leading-relaxed text-slate-500">
+                                      <span className="font-semibold text-slate-600">
+                                        Ergebnis in Jahr {ruleResult.jahr} gemäß allen bis dahin wirksamen Regeln:
+                                      </span>{' '}
+                                      <span className="font-bold text-blue-700">
+                                        {ruleResult.kaltmieteProSqm === null
+                                          ? 'pro m² nicht berechenbar'
+                                          : `${formatNumber(ruleResult.kaltmieteProSqm, 2)} €/m²/Monat`}
+                                      </span>
+                                      {' · '}
+                                      <span className="font-bold text-slate-700">
+                                        {formatEUR(ruleResult.kaltmieteProMonat, 2)} gesamt/Monat
+                                      </span>
+                                      {ruleResult.jahr > active.exit.haltedauerJahre && (
+                                        <span className="ml-1 text-amber-700">
+                                          (außerhalb der Haltedauer, nicht im Diagramm)
+                                        </span>
+                                      )}
+                                      {!ruleResult.istWirksam && (
+                                        <span className="ml-1 text-rose-700">
+                                          (nicht wirksam: Eine frühere Jahresrate im selben Startjahr hat Vorrang)
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )}
+                              </Fragment>
+                            );
+                          })}
                           {active.miete.steigerungen.length === 0 && (
                             <tr>
                               <td colSpan={4} className="px-3 py-3 text-center text-slate-400 italic">
@@ -1779,23 +1865,115 @@ export function App() {
 
                   {/* Rent mini chart */}
                   {rentChartData.length > 0 && (
-                    <div className="h-32 w-full mt-4 bg-slate-50/50 rounded-xl p-2 border border-slate-100">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Vorschau Miete (monatlich €)</span>
-                      <ResponsiveContainer width="100%" height="90%">
-                        <AreaChart data={rentChartData} margin={{ top: 2, right: 5, left: 0, bottom: 2 }}>
-                          <defs>
-                            <linearGradient id="colorMiete" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
-                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                          <XAxis dataKey="Jahr" fontSize={8} stroke="#94a3b8" />
-                          <YAxis fontSize={8} stroke="#94a3b8" />
-                          <RechartsTooltip formatter={(v) => [`${v} €`, 'Kaltmiete']} labelFormatter={(l) => `Jahr ${l}`} />
-                          <Area type="monotone" dataKey="Miete" stroke="#3b82f6" strokeWidth={1.5} fillOpacity={1} fill="url(#colorMiete)" />
-                        </AreaChart>
-                      </ResponsiveContainer>
+                    <div className="w-full mt-4 bg-slate-50/50 rounded-xl p-3 border border-slate-100">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        Mietentwicklung & Mietspiegel (monatliche Kaltmiete)
+                      </span>
+                      {!mietspiegelChartValues && (
+                        <p className="mt-1 text-[10px] text-slate-400">
+                          Vollständige und plausible Mietspiegelwerte blenden Spannbereich und Vergleichslinien ein.
+                        </p>
+                      )}
+                      <div className="mt-2 h-40 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={rentChartData} margin={{ top: 8, right: 8, left: 0, bottom: 2 }}>
+                            <defs>
+                              <linearGradient id="colorMiete" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <XAxis dataKey="Jahr" fontSize={9} stroke="#94a3b8" />
+                            <YAxis
+                              width={38}
+                              fontSize={9}
+                              stroke="#94a3b8"
+                              tickFormatter={(value) => formatNumber(Number(value), 0)}
+                            />
+                            {mietspiegelChartValues && (
+                              <>
+                                <ReferenceArea
+                                  y1={mietspiegelChartValues.lower.totalProMonat}
+                                  y2={mietspiegelChartValues.upper.totalProMonat}
+                                  ifOverflow="extendDomain"
+                                  fill="#10b981"
+                                  fillOpacity={0.08}
+                                  stroke="none"
+                                  zIndex={50}
+                                />
+                                <ReferenceLine
+                                  y={mietspiegelChartValues.lower.totalProMonat}
+                                  ifOverflow="extendDomain"
+                                  stroke={mietspiegelChartValues.lower.color}
+                                  strokeWidth={1.25}
+                                />
+                                <ReferenceLine
+                                  y={mietspiegelChartValues.mean.totalProMonat}
+                                  ifOverflow="extendDomain"
+                                  stroke={mietspiegelChartValues.mean.color}
+                                  strokeWidth={1.5}
+                                  strokeDasharray="5 4"
+                                />
+                                <ReferenceLine
+                                  y={mietspiegelChartValues.upper.totalProMonat}
+                                  ifOverflow="extendDomain"
+                                  stroke={mietspiegelChartValues.upper.color}
+                                  strokeWidth={1.25}
+                                />
+                              </>
+                            )}
+                            <RechartsTooltip
+                              formatter={(rawValue) => {
+                                const monthlyRent = Number(rawValue ?? 0);
+                                const perSqm = active.objekt.wohnflaeche > 0
+                                  ? monthlyRent / active.objekt.wohnflaeche
+                                  : null;
+                                return [
+                                  perSqm === null
+                                    ? formatEUR(monthlyRent, 2)
+                                    : `${formatEUR(monthlyRent, 2)} · ${formatNumber(perSqm, 2)} €/m²`,
+                                  'Kaltmiete',
+                                ];
+                              }}
+                              labelFormatter={(label) => `Jahr ${label}`}
+                            />
+                            <Area
+                              type="stepAfter"
+                              dataKey="Miete"
+                              stroke="#3b82f6"
+                              strokeWidth={2}
+                              fillOpacity={1}
+                              fill="url(#colorMiete)"
+                              zIndex={100}
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                      {mietspiegelChartValues && (
+                        <>
+                          <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+                            {[
+                              mietspiegelChartValues.lower,
+                              mietspiegelChartValues.mean,
+                              mietspiegelChartValues.upper,
+                            ].map((value) => (
+                              <div key={value.label} className="rounded-lg border border-slate-200 bg-white/80 px-2.5 py-2">
+                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600">
+                                  <span className="h-0.5 w-3 rounded" style={{ backgroundColor: value.color }} />
+                                  {value.label}
+                                </div>
+                                <div className="mt-0.5 text-[10px] text-slate-500">
+                                  {formatNumber(value.proSqm, 2)} €/m² · {formatEUR(value.totalProMonat, 2)}/Monat
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
+                            Der hinterlegte Mietspiegel bleibt als statische Orientierung über alle Projektionsjahre unverändert.
+                          </p>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

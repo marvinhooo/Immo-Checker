@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { assessRentAgainstMietspiegel, projectRent, projectCosts } from './rent';
+import {
+  assessRentAgainstMietspiegel,
+  calculateRentRuleResults,
+  projectRent,
+  projectCosts,
+} from './rent';
 import { MieteInput, KostenInput } from './types';
 
 const emptyMietspiegel = {
@@ -111,6 +116,67 @@ describe('rent engine - Mietspiegel assessment', () => {
       mittelwertProSqm: 10,
       obererSpannwertProSqm: 8,
     }).status).toBe('invalid');
+  });
+});
+
+describe('rent engine - rule results', () => {
+  it('uses the full timeline result in each rule start year', () => {
+    const rules = [
+      { id: 'rate', kind: 'rate' as const, fromYear: 1, percentPerYear: 2 },
+      { id: 'step', kind: 'step' as const, fromYear: 3, percent: 10 },
+    ];
+
+    const results = calculateRentRuleResults(1000, 100, rules);
+
+    expect(results[0]).toEqual({
+      ruleId: 'rate',
+      jahr: 1,
+      kaltmieteProMonat: 1000,
+      kaltmieteProSqm: 10,
+      istWirksam: true,
+    });
+    expect(results[1].ruleId).toBe('step');
+    expect(results[1].jahr).toBe(3);
+    expect(results[1].kaltmieteProMonat).toBeCloseTo(1144.44, 5);
+    expect(results[1].kaltmieteProSqm).toBeCloseTo(11.4444, 5);
+  });
+
+  it('calculates rules beyond the chart horizon and handles missing area', () => {
+    const results = calculateRentRuleResults(800, 0, [
+      { id: 'late', kind: 'step', fromYear: 20, percent: 25 },
+    ]);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].jahr).toBe(20);
+    expect(results[0].kaltmieteProMonat).toBe(1000);
+    expect(results[0].kaltmieteProSqm).toBeNull();
+  });
+
+  it('shows the same combined result for rules sharing a start year', () => {
+    const results = calculateRentRuleResults(1000, 100, [
+      { id: 'base-rate', kind: 'rate', fromYear: 1, percentPerYear: 1 },
+      { id: 'new-rate', kind: 'rate', fromYear: 3, percentPerYear: 3 },
+      { id: 'same-year-step', kind: 'step', fromYear: 3, percent: 10 },
+      { id: 'second-step', kind: 'step', fromYear: 3, percent: 5 },
+    ]);
+
+    expect(results[1].kaltmieteProMonat).toBeCloseTo(1201.5465, 5);
+    expect(results[2].kaltmieteProMonat).toBeCloseTo(1201.5465, 5);
+    expect(results[3].kaltmieteProMonat).toBeCloseTo(1201.5465, 5);
+    expect(results[1].kaltmieteProSqm).toBeCloseTo(12.015465, 5);
+    expect(results.slice(1).every((result) => result.istWirksam)).toBe(true);
+  });
+
+  it('marks a duplicate annual rate in the same start year as ineffective', () => {
+    const results = calculateRentRuleResults(1000, 100, [
+      { id: 'first-rate', kind: 'rate', fromYear: 2, percentPerYear: 2 },
+      { id: 'ignored-rate', kind: 'rate', fromYear: 2, percentPerYear: 10 },
+    ]);
+
+    expect(results[0].kaltmieteProMonat).toBe(1020);
+    expect(results[1].kaltmieteProMonat).toBe(1020);
+    expect(results[0].istWirksam).toBe(true);
+    expect(results[1].istWirksam).toBe(false);
   });
 });
 

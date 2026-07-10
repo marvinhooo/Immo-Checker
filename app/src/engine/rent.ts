@@ -1,4 +1,4 @@
-import { MieteInput, KostenInput, MietspiegelInput } from './types';
+import { MieteInput, KostenInput, MietspiegelInput, IncreaseRule } from './types';
 import { projectSeries } from './timeline';
 
 export type MietspiegelStatus = 'incomplete' | 'invalid' | 'below' | 'within' | 'above';
@@ -6,6 +6,14 @@ export type MietspiegelStatus = 'incomplete' | 'invalid' | 'below' | 'within' | 
 export interface MietspiegelAssessment {
   status: MietspiegelStatus;
   abweichungZumMittelwert: number | null;
+}
+
+export interface RentRuleResult {
+  ruleId: string;
+  jahr: number;
+  kaltmieteProMonat: number;
+  kaltmieteProSqm: number | null;
+  istWirksam: boolean;
 }
 
 export interface RentYearProjection {
@@ -21,6 +29,12 @@ export interface CostYearProjection {
   verwaltung: number;
   sonstigeKosten: number;
   summeKosten: number;     // non-apportionable total costs (Werbungskosten)
+}
+
+export function rentPerSqmInCents(value: number): number {
+  return Math.round(
+    (value + Number.EPSILON * Math.max(1, Math.abs(value))) * 100
+  );
 }
 
 /**
@@ -50,13 +64,10 @@ export function assessRentAgainstMietspiegel(
   // Mietspiegelwerte werden in Cent je m2 angezeigt und eingegeben. Die
   // Einordnung nutzt dieselbe Genauigkeit, damit nicht z. B. 12,00 als
   // oberhalb eines ebenfalls angezeigten Werts von 12,00 erscheint.
-  const toCents = (value: number) => Math.round(
-    (value + Number.EPSILON * Math.max(1, Math.abs(value))) * 100
-  );
-  const rentCents = toCents(rentProSqm);
-  const lowerCents = toCents(untererSpannwertProSqm);
-  const meanCents = toCents(mittelwertProSqm);
-  const upperCents = toCents(obererSpannwertProSqm);
+  const rentCents = rentPerSqmInCents(rentProSqm);
+  const lowerCents = rentPerSqmInCents(untererSpannwertProSqm);
+  const meanCents = rentPerSqmInCents(mittelwertProSqm);
+  const upperCents = rentPerSqmInCents(obererSpannwertProSqm);
 
   const abweichungZumMittelwert = meanCents > 0
     ? (rentCents - meanCents) / 100
@@ -84,6 +95,42 @@ export function assessRentAgainstMietspiegel(
     return { status: 'above', abweichungZumMittelwert };
   }
   return { status: 'within', abweichungZumMittelwert };
+}
+
+/**
+ * Berechnet fuer jede Mietsteigerungsregel den Stand der monatlichen Kaltmiete
+ * in ihrem Startjahr. Alle bis zu diesem Jahr wirksamen Regeln werden dabei
+ * genauso kombiniert wie in der Mietprojektion.
+ */
+export function calculateRentRuleResults(
+  baseRentProMonat: number,
+  wohnflaeche: number,
+  rules: IncreaseRule[]
+): RentRuleResult[] {
+  if (rules.length === 0) return [];
+
+  const maxRuleYear = Math.max(...rules.map((rule) => rule.fromYear));
+  const rentSeries = projectSeries(baseRentProMonat, rules, maxRuleYear);
+
+  const firstRateIndexByYear = new Map<number, number>();
+  rules.forEach((rule, index) => {
+    if (rule.kind === 'rate' && !firstRateIndexByYear.has(rule.fromYear)) {
+      firstRateIndexByYear.set(rule.fromYear, index);
+    }
+  });
+
+  return rules.map((rule, index) => {
+    const jahr = rule.fromYear;
+    const kaltmieteProMonat = rentSeries[jahr - 1] ?? baseRentProMonat;
+
+    return {
+      ruleId: rule.id,
+      jahr,
+      kaltmieteProMonat,
+      kaltmieteProSqm: wohnflaeche > 0 ? kaltmieteProMonat / wohnflaeche : null,
+      istWirksam: rule.kind === 'step' || firstRateIndexByYear.get(rule.fromYear) === index,
+    };
+  });
 }
 
 /**

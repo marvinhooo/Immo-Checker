@@ -93,7 +93,7 @@ Allgemeine Arbeitsregeln:
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
 ## Handover Naechster Thread (Stand: 2026-07-10)
-- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin- sowie Mietspiegel-/Notizen-Erweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (149/149 Tests).
+- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin- sowie Mietspiegel-/Notizen-/Visualisierungserweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (153/153 Tests).
 - Offener Fokus: Keine offenen Stories.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
@@ -114,7 +114,10 @@ Allgemeine Arbeitsregeln:
 - Die aktuell angesetzte, zwischen Monats-/Jahres-/m2-Eingabe synchronisierte Nettokaltmiete pro m2 wird live als `unterhalb`, `innerhalb` oder `oberhalb` des Spannbereichs eingeordnet. Untere und obere Grenze zaehlen inklusive zum Spannbereich.
 - Einordnung und Anzeige verwenden dieselbe Cent-Genauigkeit. Zusaetzlich wird die absolute Abweichung vom Mittelwert ausgewiesen.
 - Unvollstaendige Nullwerte erhalten keine Ampel-Einordnung; eine unplausible Reihenfolge ausserhalb `unterer Spannwert <= Mittelwert <= oberer Spannwert` wird als Eingabefehler angezeigt.
-- Langfristige Mietsteigerungsregeln werden bewusst nicht gegen einen statischen Mietspiegel fortgeschrieben. Die Anzeige ist nur eine rechnerische Orientierung und keine rechtliche Pruefung einer Mieterhoehung.
+- Die Live-Ampel bewertet weiterhin nur die aktuell angesetzte Miete. Das Mietdiagramm legt den eingegebenen unteren Spannwert, Mittelwert und oberen Spannwert zusaetzlich als statische Orientierung ueber die projizierte Mietentwicklung: schattierter Spannbereich, drei Vergleichslinien, Legende und Tooltip jeweils in EUR/m2/Monat und gesamter Monatskaltmiete.
+- Unter jeder Mietsteigerungsregel steht der mit derselben Zeitreihenlogik berechnete Mietstand in ihrem Startjahr, jeweils pro m2/Monat und gesamt/Monat. Dabei werden alle bis dahin wirksamen Regeln kombiniert; gleichjaehrige Regeln zeigen denselben Jahreswert.
+- Regeln ausserhalb der Haltedauer werden weiter bis zu ihrem Startjahr berechnet, aber als nicht im Diagramm enthalten markiert. Bei doppelten Jahresraten im selben Startjahr wird die nach bestehender Zeitreihensemantik nicht wirksame spaetere Rate gekennzeichnet.
+- Der Mietspiegel wird nicht automatisch fortgeschrieben. Die Visualisierung ist nur eine rechnerische Orientierung und keine rechtliche Pruefung einer Mieterhoehung.
 - Bestehende Szenarien der Schema-Version 1 bleiben kompatibel: fehlende Notizen werden als leerer Text und fehlende Mietspiegelwerte als 0 migriert. Es ist keine SQL-Migration erforderlich, da Supabase das Szenario als JSONB speichert.
 
 Verify:
@@ -127,7 +130,7 @@ npm run test
 npm run build
 ```
 
-Ergebnis: Zieltests 52/52 gruen; Gesamtsuite 149/149 gruen; Lint, Typecheck und Build gruen.
+Ergebnis: Zieltests 56/56 gruen; Gesamtsuite 153/153 gruen; Lint, Typecheck und Build gruen.
 
 ## Story-Status-Uebersicht (Stand: 2026-06-20)
 | Story | Thema | Status |

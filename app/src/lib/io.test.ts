@@ -8,6 +8,12 @@ describe('io', () => {
   it('should export and import a single scenario correctly', () => {
     const sc = createDefaultScenario();
     sc.name = 'Test Single Import';
+    sc.notizen = 'Freie Notiz\nmit Umlaut: Küche';
+    sc.miete.mietspiegel = {
+      untererSpannwertProSqm: 8,
+      mittelwertProSqm: 10,
+      obererSpannwertProSqm: 12,
+    };
     const json = exportScenario(sc);
     const imported = importScenarios(json);
 
@@ -16,6 +22,8 @@ describe('io', () => {
     expect(single.name).toBe('Test Single Import');
     expect(single.objekt.kaufpreis).toBe(sc.objekt.kaufpreis);
     expect(single.schemaVersion).toBe(1);
+    expect(single.notizen).toBe('Freie Notiz\nmit Umlaut: Küche');
+    expect(single.miete.mietspiegel).toEqual(sc.miete.mietspiegel);
   });
 
   it('should export and import multiple scenarios correctly in bulk format', () => {
@@ -172,6 +180,40 @@ describe('io', () => {
     expect(imported.miete.kaltmieteProMonat).toBe(900);
     expect(imported.miete.kaltmieteProJahr).toBe(10800);
     expect(imported.miete.kaltmieteProSqm).toBeCloseTo(900 / 70, 5);
+  });
+
+  it('should backfill notes and Mietspiegel values in old scenarios', () => {
+    const sc = createDefaultScenario();
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const miete = parsed.miete as Record<string, unknown>;
+    delete parsed.notizen;
+    delete miete.mietspiegel;
+
+    const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
+
+    expect(imported.notizen).toBe('');
+    expect(imported.miete.mietspiegel).toEqual({
+      untererSpannwertProSqm: 0,
+      mittelwertProSqm: 0,
+      obererSpannwertProSqm: 0,
+    });
+  });
+
+  it('should reject invalid note and Mietspiegel field types', () => {
+    const sc = createDefaultScenario();
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    parsed.notizen = 123;
+
+    expect(() => importScenarios(JSON.stringify(parsed))).toThrow('notizen muss ein Text sein.');
+
+    parsed.notizen = '';
+    const miete = parsed.miete as Record<string, unknown>;
+    const mietspiegel = miete.mietspiegel as Record<string, unknown>;
+    mietspiegel.mittelwertProSqm = -1;
+
+    expect(() => importScenarios(JSON.stringify(parsed))).toThrow(
+      'mittelwertProSqm muss eine Zahl zwischen 0 und 9007199254740991 sein.'
+    );
   });
 
   it('should preserve and validate yearly cold rent mode on import', () => {

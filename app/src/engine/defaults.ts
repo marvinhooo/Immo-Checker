@@ -26,6 +26,7 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
     schemaVersion: SCHEMA_VERSION,
     id: uuid(),
     name: 'Beispiel: ETW 300.000 EUR',
+    notizen: '',
     objekt: {
       kaufpreis,
       wohnflaeche,
@@ -62,6 +63,11 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
       kaltmieteProJahr: kaltmieteProMonat * 12,
       kaltmieteProSqm: kaltmieteProMonat / wohnflaeche,
       leerstandPct: 3,
+      mietspiegel: {
+        untererSpannwertProSqm: 0,
+        mittelwertProSqm: 0,
+        obererSpannwertProSqm: 0,
+      },
       steigerungen: [
         { id: uuid(), kind: 'rate', fromYear: 1, percentPerYear: 1.5 },
       ],
@@ -105,7 +111,14 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
     objekt: { ...base.objekt, ...(overrides.objekt ?? {}) },
     knk: { ...base.knk, ...(overrides.knk ?? {}) },
     finanzierung: { ...base.finanzierung, ...(overrides.finanzierung ?? {}) },
-    miete: { ...base.miete, ...(overrides.miete ?? {}) },
+    miete: {
+      ...base.miete,
+      ...(overrides.miete ?? {}),
+      mietspiegel: {
+        ...base.miete.mietspiegel,
+        ...(overrides.miete?.mietspiegel ?? {}),
+      },
+    },
     kosten: { ...base.kosten, ...(overrides.kosten ?? {}) },
     steuer: { ...base.steuer, ...(overrides.steuer ?? {}) },
     afa: { ...base.afa, ...(overrides.afa ?? {}) },

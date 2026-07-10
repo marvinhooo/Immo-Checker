@@ -119,6 +119,11 @@ export function validateScenario(s: unknown, index?: number): Scenario {
 
   requireString(s, 'id', prefix);
   requireString(s, 'name', prefix);
+  if (s.notizen === undefined || s.notizen === null) {
+    s.notizen = '';
+  } else if (typeof s.notizen !== 'string') {
+    throw new Error(`${prefix}notizen muss ein Text sein.`);
+  }
   if (requireNumber(s, 'schemaVersion', prefix) !== SCHEMA_VERSION) {
     throw new Error(`${prefix}Nicht unterstützte Schema-Version.`);
   }
@@ -188,6 +193,18 @@ export function validateScenario(s: unknown, index?: number): Scenario {
     miete.kaltmieteProSqm = wohnflaeche > 0 ? kaltmieteProMonat / wohnflaeche : 0;
   }
   requireNumberInRange(miete, 'leerstandPct', 0, 100, prefix);
+  if (miete.mietspiegel === undefined || miete.mietspiegel === null) {
+    miete.mietspiegel = {
+      untererSpannwertProSqm: 0,
+      mittelwertProSqm: 0,
+      obererSpannwertProSqm: 0,
+    };
+  } else {
+    const mietspiegel = requireSection(miete, 'mietspiegel', prefix);
+    requireNumberInRange(mietspiegel, 'untererSpannwertProSqm', 0, Number.MAX_SAFE_INTEGER, prefix);
+    requireNumberInRange(mietspiegel, 'mittelwertProSqm', 0, Number.MAX_SAFE_INTEGER, prefix);
+    requireNumberInRange(mietspiegel, 'obererSpannwertProSqm', 0, Number.MAX_SAFE_INTEGER, prefix);
+  }
   validateIncreaseRules(miete.steigerungen, 'Mietsteigerungen', prefix);
 
   const kosten = requireSection(s, 'kosten', prefix);

@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { projectRent, projectCosts } from './rent';
+import { assessRentAgainstMietspiegel, projectRent, projectCosts } from './rent';
 import { MieteInput, KostenInput } from './types';
+
+const emptyMietspiegel = {
+  untererSpannwertProSqm: 0,
+  mittelwertProSqm: 0,
+  obererSpannwertProSqm: 0,
+};
 
 describe('rent engine - projectRent', () => {
   it('should project rent in monthly mode', () => {
@@ -10,6 +16,7 @@ describe('rent engine - projectRent', () => {
       kaltmieteProJahr: 12000,
       kaltmieteProSqm: 0,
       leerstandPct: 5,
+      mietspiegel: emptyMietspiegel,
       steigerungen: [{ id: 'r1', kind: 'rate', fromYear: 1, percentPerYear: 2 }]
     };
 
@@ -36,6 +43,7 @@ describe('rent engine - projectRent', () => {
       kaltmieteProJahr: 14400,
       kaltmieteProSqm: 15,
       leerstandPct: 0,
+      mietspiegel: emptyMietspiegel,
       steigerungen: []
     };
 
@@ -52,12 +60,57 @@ describe('rent engine - projectRent', () => {
       kaltmieteProJahr: 12000,
       kaltmieteProSqm: 10,
       leerstandPct: 10,
+      mietspiegel: emptyMietspiegel,
       steigerungen: []
     };
 
     const projection = projectRent(input, 100, 1);
     expect(projection[0].bruttoKaltmiete).toBe(12000);
     expect(projection[0].nettoKaltmiete).toBe(10800);
+  });
+});
+
+describe('rent engine - Mietspiegel assessment', () => {
+  const mietspiegel = {
+    untererSpannwertProSqm: 8,
+    mittelwertProSqm: 10,
+    obererSpannwertProSqm: 12,
+  };
+
+  it('treats the lower and upper boundaries as inside the range', () => {
+    expect(assessRentAgainstMietspiegel(8, mietspiegel).status).toBe('within');
+    expect(assessRentAgainstMietspiegel(12, mietspiegel).status).toBe('within');
+  });
+
+  it('classifies rents below and above the range', () => {
+    expect(assessRentAgainstMietspiegel(7.99, mietspiegel).status).toBe('below');
+    expect(assessRentAgainstMietspiegel(12.01, mietspiegel).status).toBe('above');
+  });
+
+  it('reports the deviation from the mean', () => {
+    expect(assessRentAgainstMietspiegel(11.25, mietspiegel)).toEqual({
+      status: 'within',
+      abweichungZumMittelwert: 1.25,
+    });
+  });
+
+  it('uses the displayed cent precision for boundary comparisons', () => {
+    expect(assessRentAgainstMietspiegel(12.004, mietspiegel).status).toBe('within');
+    expect(assessRentAgainstMietspiegel(12.006, mietspiegel).status).toBe('above');
+    expect(assessRentAgainstMietspiegel(10.08, {
+      untererSpannwertProSqm: 8,
+      mittelwertProSqm: 9,
+      obererSpannwertProSqm: 10.075,
+    }).status).toBe('within');
+  });
+
+  it('does not classify incomplete or incorrectly ordered values', () => {
+    expect(assessRentAgainstMietspiegel(10, emptyMietspiegel).status).toBe('incomplete');
+    expect(assessRentAgainstMietspiegel(10, {
+      untererSpannwertProSqm: 12,
+      mittelwertProSqm: 10,
+      obererSpannwertProSqm: 8,
+    }).status).toBe('invalid');
   });
 });
 

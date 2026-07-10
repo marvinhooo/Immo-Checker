@@ -63,12 +63,19 @@ export interface FinanzierungInput {
   disagioPct: number; // optional, 0 = kein Disagio
 }
 
+export interface MietspiegelInput {
+  untererSpannwertProSqm: number; // EUR/m2/Monat
+  mittelwertProSqm: number; // EUR/m2/Monat
+  obererSpannwertProSqm: number; // EUR/m2/Monat
+}
+
 export interface MieteInput {
   rentMode: RentMode;
   kaltmieteProMonat: number; // EUR/Monat (rentMode = 'perMonth')
   kaltmieteProJahr: number; // EUR/Jahr (rentMode = 'perYear')
   kaltmieteProSqm: number; // EUR/m2/Monat (rentMode = 'perSqm')
   leerstandPct: number; // Mietausfallwagnis / Leerstand %
+  mietspiegel: MietspiegelInput; // Vergleichswerte des fuer das Objekt geltenden Mietspiegels
   steigerungen: IncreaseRule[]; // flexible Mietsteigerung
 }
 
@@ -110,6 +117,7 @@ export interface Scenario {
   schemaVersion: number;
   id: string;
   name: string;
+  notizen: string;
   objekt: ObjektInput;
   knk: KaufnebenkostenInput;
   finanzierung: FinanzierungInput;

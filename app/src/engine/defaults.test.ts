@@ -13,6 +13,9 @@ describe('createDefaultScenario', () => {
       },
       miete: {
         steigerungen: [],
+        mietspiegel: {
+          mittelwertProSqm: 10,
+        },
       },
     });
 
@@ -28,6 +31,12 @@ describe('createDefaultScenario', () => {
     expect(scenario.miete.steigerungen).toEqual([]);
     expect(scenario.miete.kaltmieteProMonat).toBe(1050);
     expect(scenario.miete.kaltmieteProJahr).toBe(12600);
+    expect(scenario.miete.mietspiegel).toEqual({
+      untererSpannwertProSqm: 0,
+      mittelwertProSqm: 10,
+      obererSpannwertProSqm: 0,
+    });
+    expect(scenario.notizen).toBe('');
     expect(scenario.kosten.instandhaltungProSqm).toBe(20);
   });
 });

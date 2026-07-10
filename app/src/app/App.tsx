@@ -17,6 +17,7 @@ import { buildAmortizationSchedule } from '../engine/financing';
 import { calculateMetrics } from '../engine/metrics';
 import { calculateExit } from '../engine/exit';
 import { analyzeHoldingPeriods } from '../engine/holding';
+import { assessRentAgainstMietspiegel } from '../engine/rent';
 import {
   runSensitivity,
   generateTornadoData,
@@ -526,6 +527,59 @@ export function App() {
       Miete: Math.round(val),
     }));
   }, [rentBase, active.miete.steigerungen, active.exit.haltedauerJahre]);
+
+  const mietspiegelAssessment = useMemo(
+    () => assessRentAgainstMietspiegel(
+      active.miete.kaltmieteProSqm,
+      active.miete.mietspiegel
+    ),
+    [active.miete.kaltmieteProSqm, active.miete.mietspiegel]
+  );
+
+  const mietspiegelStatusView = useMemo(() => {
+    const rent = formatNumber(active.miete.kaltmieteProSqm, 2);
+    const lower = formatNumber(active.miete.mietspiegel.untererSpannwertProSqm, 2);
+    const upper = formatNumber(active.miete.mietspiegel.obererSpannwertProSqm, 2);
+
+    switch (mietspiegelAssessment.status) {
+      case 'within':
+        return {
+          title: 'Im Spannbereich',
+          description: `${rent} €/m² liegt innerhalb von ${lower} bis ${upper} €/m².`,
+          className: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+          icon: 'success',
+        };
+      case 'below':
+        return {
+          title: 'Unterhalb des Spannbereichs',
+          description: `${rent} €/m² liegt unter dem unteren Spannwert von ${lower} €/m².`,
+          className: 'border-sky-200 bg-sky-50 text-sky-800',
+          icon: 'info',
+        };
+      case 'above':
+        return {
+          title: 'Oberhalb des Spannbereichs',
+          description: `${rent} €/m² liegt über dem oberen Spannwert von ${upper} €/m².`,
+          className: 'border-rose-200 bg-rose-50 text-rose-800',
+          icon: 'warning',
+        };
+      case 'invalid':
+        return {
+          title: 'Mietspiegelwerte prüfen',
+          description: 'Erwartete Reihenfolge: unterer Spannwert ≤ Mittelwert ≤ oberer Spannwert.',
+          className: 'border-amber-200 bg-amber-50 text-amber-800',
+          icon: 'warning',
+        };
+      case 'incomplete':
+      default:
+        return {
+          title: 'Mietspiegelwerte vervollständigen',
+          description: 'Bitte unteren Spannwert, Mittelwert und oberen Spannwert eingeben.',
+          className: 'border-slate-200 bg-slate-50 text-slate-700',
+          icon: 'info',
+        };
+    }
+  }, [active.miete.kaltmieteProSqm, active.miete.mietspiegel, mietspiegelAssessment.status]);
 
   const valueBase = active.objekt.kaufpreis;
   
@@ -1547,6 +1601,86 @@ export function App() {
 
                   <hr className="border-slate-100" />
 
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <span>Mietspiegel</span>
+                        <InfoTooltip content="Die Einordnung vergleicht die aktuell angesetzte Nettokaltmiete je m² und Monat mit dem eingegebenen Spannbereich." />
+                      </div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                        Werte in EUR je m² Wohnfläche und Monat aus dem für das Objekt geltenden Mietspiegel.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <NumberInput
+                        label="Unterer Spannwert"
+                        value={active.miete.mietspiegel.untererSpannwertProSqm}
+                        suffix="EUR/m²"
+                        min={0}
+                        step={0.01}
+                        fractionDigits={2}
+                        onChange={(val) => updateActive((d) => {
+                          d.miete.mietspiegel.untererSpannwertProSqm = val;
+                        })}
+                      />
+                      <NumberInput
+                        label="Mittelwert"
+                        value={active.miete.mietspiegel.mittelwertProSqm}
+                        suffix="EUR/m²"
+                        min={0}
+                        step={0.01}
+                        fractionDigits={2}
+                        onChange={(val) => updateActive((d) => {
+                          d.miete.mietspiegel.mittelwertProSqm = val;
+                        })}
+                      />
+                      <NumberInput
+                        label="Oberer Spannwert"
+                        value={active.miete.mietspiegel.obererSpannwertProSqm}
+                        suffix="EUR/m²"
+                        min={0}
+                        step={0.01}
+                        fractionDigits={2}
+                        onChange={(val) => updateActive((d) => {
+                          d.miete.mietspiegel.obererSpannwertProSqm = val;
+                        })}
+                      />
+                    </div>
+
+                    <div
+                      role="status"
+                      className={`flex items-start gap-2.5 rounded-xl border px-3.5 py-3 ${mietspiegelStatusView.className}`}
+                    >
+                      {mietspiegelStatusView.icon === 'success' ? (
+                        <CheckCircle size={17} className="mt-0.5 shrink-0" />
+                      ) : mietspiegelStatusView.icon === 'warning' ? (
+                        <AlertTriangle size={17} className="mt-0.5 shrink-0" />
+                      ) : (
+                        <Info size={17} className="mt-0.5 shrink-0" />
+                      )}
+                      <div>
+                        <div className="text-sm font-bold">{mietspiegelStatusView.title}</div>
+                        <div className="mt-0.5 text-xs leading-relaxed">{mietspiegelStatusView.description}</div>
+                        {mietspiegelAssessment.abweichungZumMittelwert !== null &&
+                          mietspiegelAssessment.status !== 'incomplete' &&
+                          mietspiegelAssessment.status !== 'invalid' && (
+                            <div className="mt-1 text-[11px] font-semibold">
+                              Abweichung vom Mittelwert:{' '}
+                              {mietspiegelAssessment.abweichungZumMittelwert > 0 ? '+' : ''}
+                              {formatNumber(mietspiegelAssessment.abweichungZumMittelwert, 2)} €/m²
+                            </div>
+                          )}
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] leading-relaxed text-slate-400">
+                      Der Mittelwert ist der Ausgangspunkt. Wohnwerterhöhende oder wohnwertmindernde Merkmale können eine Abweichung innerhalb der Spanne begründen. Die Anzeige ist eine rechnerische Orientierung und keine rechtliche Prüfung einer Mieterhöhung.
+                    </p>
+                  </div>
+
+                  <hr className="border-slate-100" />
+
                   {/* Flexible Miete-Rules */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
@@ -2124,6 +2258,47 @@ export function App() {
                       suffix="%"
                     />
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* SEKTION 10: Notizen */}
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+              <button
+                onClick={() => toggleSection('notizen')}
+                className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
+              >
+                <div className="flex flex-col">
+                  <span>10. Notizen</span>
+                  {openSection !== 'notizen' && (
+                    <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      {active.notizen.trim() ? 'Notizen vorhanden' : 'Keine Notizen'}
+                    </span>
+                  )}
+                </div>
+                <span className={`transform transition-transform duration-200 ${openSection === 'notizen' ? 'rotate-180' : ''}`}>
+                  ▼
+                </span>
+              </button>
+              {openSection === 'notizen' && (
+                <div className="border-t border-slate-100 px-5 py-5">
+                  <label
+                    htmlFor="scenario-notizen"
+                    className="text-xs font-semibold uppercase tracking-wider text-slate-500"
+                  >
+                    Freie Notizen zum Objekt und Szenario
+                  </label>
+                  <textarea
+                    id="scenario-notizen"
+                    value={active.notizen}
+                    onChange={(event) => updateActive((d) => { d.notizen = event.target.value; })}
+                    rows={7}
+                    placeholder="Zum Beispiel: Zustand, Besichtigungspunkte, offene Fragen oder Besonderheiten …"
+                    className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm leading-relaxed text-slate-800 shadow-xs transition-all duration-200 placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:outline-hidden"
+                  />
+                  <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">
+                    Wird mit dem Szenario gespeichert und bei JSON-Exporten übernommen.
+                  </p>
                 </div>
               )}
             </div>

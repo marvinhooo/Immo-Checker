@@ -92,8 +92,8 @@ Allgemeine Arbeitsregeln:
 - Schreibe sauberen, testbaren Code mit klaren Schnittstellen. Rechenkern bleibt UI-frei und deterministisch.
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
-## Handover Naechster Thread (Stand: 2026-06-21)
-- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin-Erweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (135/135 Tests).
+## Handover Naechster Thread (Stand: 2026-07-10)
+- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin- sowie Mietspiegel-/Notizen-Erweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (149/149 Tests).
 - Offener Fokus: Keine offenen Stories.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
@@ -106,6 +106,28 @@ Allgemeine Arbeitsregeln:
 - Szenarien sind strikt accountgebunden: Der UI-State wird beim Account-Wechsel sofort auf den neuen `ownerUserId` umgestellt und fremde/in-flight Cloud-Antworten duerfen den aktuellen Account-State nicht ueberschreiben. Admins haben ueber normale Tabellenrechte keinen Lesezugriff auf fremde Szenario-Inhalte.
 - Bestehende Supabase-Instanzen muessen fuer Auth/Admin-Fixes die idempotente Migration `supabase-auth-admin-migration.sql` ausfuehren; Neuinstallationen nutzen `supabase-setup.sql`.
 - Auth-E-Mail-Links muessen auf die Vite-App-Basis zeigen, z. B. `/Immo-Checker/`, damit statische Hosts nicht mit 404 auf Unterrouten antworten.
+
+## Nachtraegliche Mietspiegel-/Notizen-Erweiterung (Stand: 2026-07-10)
+
+- Jedes Szenario enthaelt ein freies Notizenfeld. Die Notizen werden beim expliziten Speichern zusammen mit dem vollstaendigen Szenario uebernommen und bleiben in Cloud-Synchronisation sowie JSON-Export/-Import erhalten.
+- Die Mietsektion enthaelt drei frei editierbare Mietspiegelwerte in EUR je m2 Wohnflaeche und Monat: unteren Spannwert, Mittelwert und oberen Spannwert.
+- Die aktuell angesetzte, zwischen Monats-/Jahres-/m2-Eingabe synchronisierte Nettokaltmiete pro m2 wird live als `unterhalb`, `innerhalb` oder `oberhalb` des Spannbereichs eingeordnet. Untere und obere Grenze zaehlen inklusive zum Spannbereich.
+- Einordnung und Anzeige verwenden dieselbe Cent-Genauigkeit. Zusaetzlich wird die absolute Abweichung vom Mittelwert ausgewiesen.
+- Unvollstaendige Nullwerte erhalten keine Ampel-Einordnung; eine unplausible Reihenfolge ausserhalb `unterer Spannwert <= Mittelwert <= oberer Spannwert` wird als Eingabefehler angezeigt.
+- Langfristige Mietsteigerungsregeln werden bewusst nicht gegen einen statischen Mietspiegel fortgeschrieben. Die Anzeige ist nur eine rechnerische Orientierung und keine rechtliche Pruefung einer Mieterhoehung.
+- Bestehende Szenarien der Schema-Version 1 bleiben kompatibel: fehlende Notizen werden als leerer Text und fehlende Mietspiegelwerte als 0 migriert. Es ist keine SQL-Migration erforderlich, da Supabase das Szenario als JSONB speichert.
+
+Verify:
+```bash
+cd app
+npx vitest run src/engine/rent.test.ts src/engine/defaults.test.ts src/store/scenarioStore.test.ts src/lib/io.test.ts
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+Ergebnis: Zieltests 52/52 gruen; Gesamtsuite 149/149 gruen; Lint, Typecheck und Build gruen.
 
 ## Story-Status-Uebersicht (Stand: 2026-06-20)
 | Story | Thema | Status |

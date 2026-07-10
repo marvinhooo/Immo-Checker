@@ -1,5 +1,12 @@
-import { MieteInput, KostenInput } from './types';
+import { MieteInput, KostenInput, MietspiegelInput } from './types';
 import { projectSeries } from './timeline';
+
+export type MietspiegelStatus = 'incomplete' | 'invalid' | 'below' | 'within' | 'above';
+
+export interface MietspiegelAssessment {
+  status: MietspiegelStatus;
+  abweichungZumMittelwert: number | null;
+}
 
 export interface RentYearProjection {
   jahr: number;
@@ -14,6 +21,69 @@ export interface CostYearProjection {
   verwaltung: number;
   sonstigeKosten: number;
   summeKosten: number;     // non-apportionable total costs (Werbungskosten)
+}
+
+/**
+ * Ordnet die aktuell angesetzte Nettokaltmiete pro m2/Monat in einen
+ * nutzerseitig erfassten Mietspiegel-Spannbereich ein.
+ */
+export function assessRentAgainstMietspiegel(
+  rentProSqm: number,
+  mietspiegel: MietspiegelInput
+): MietspiegelAssessment {
+  const {
+    untererSpannwertProSqm,
+    mittelwertProSqm,
+    obererSpannwertProSqm,
+  } = mietspiegel;
+  const values = [
+    rentProSqm,
+    untererSpannwertProSqm,
+    mittelwertProSqm,
+    obererSpannwertProSqm,
+  ];
+
+  if (!values.every(Number.isFinite) || values.some((value) => value < 0)) {
+    return { status: 'invalid', abweichungZumMittelwert: null };
+  }
+
+  // Mietspiegelwerte werden in Cent je m2 angezeigt und eingegeben. Die
+  // Einordnung nutzt dieselbe Genauigkeit, damit nicht z. B. 12,00 als
+  // oberhalb eines ebenfalls angezeigten Werts von 12,00 erscheint.
+  const toCents = (value: number) => Math.round(
+    (value + Number.EPSILON * Math.max(1, Math.abs(value))) * 100
+  );
+  const rentCents = toCents(rentProSqm);
+  const lowerCents = toCents(untererSpannwertProSqm);
+  const meanCents = toCents(mittelwertProSqm);
+  const upperCents = toCents(obererSpannwertProSqm);
+
+  const abweichungZumMittelwert = meanCents > 0
+    ? (rentCents - meanCents) / 100
+    : null;
+
+  if (
+    lowerCents <= 0 ||
+    meanCents <= 0 ||
+    upperCents <= 0
+  ) {
+    return { status: 'incomplete', abweichungZumMittelwert };
+  }
+
+  if (
+    lowerCents > meanCents ||
+    meanCents > upperCents
+  ) {
+    return { status: 'invalid', abweichungZumMittelwert };
+  }
+
+  if (rentCents < lowerCents) {
+    return { status: 'below', abweichungZumMittelwert };
+  }
+  if (rentCents > upperCents) {
+    return { status: 'above', abweichungZumMittelwert };
+  }
+  return { status: 'within', abweichungZumMittelwert };
 }
 
 /**

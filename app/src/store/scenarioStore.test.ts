@@ -54,6 +54,8 @@ describe('scenarioStore', () => {
   it('saves, loads and deletes named scenarios', () => {
     useScenarioStore.getState().updateActive((d) => {
       d.objekt.kaufpreis = 250000;
+      d.notizen = 'Besichtigung:\n- Fenster prüfen 🪟';
+      d.miete.mietspiegel.mittelwertProSqm = 10.25;
     });
     const id = useScenarioStore.getState().saveCurrent('Test A');
     expect(useScenarioStore.getState().saved).toHaveLength(1);
@@ -62,9 +64,13 @@ describe('scenarioStore', () => {
     // aktives Szenario aendern, dann gespeichertes wieder laden -> wiederhergestellt
     useScenarioStore.getState().updateActive((d) => {
       d.objekt.kaufpreis = 999999;
+      d.notizen = '';
+      d.miete.mietspiegel.mittelwertProSqm = 0;
     });
     useScenarioStore.getState().loadSaved(id);
     expect(useScenarioStore.getState().active.objekt.kaufpreis).toBe(250000);
+    expect(useScenarioStore.getState().active.notizen).toBe('Besichtigung:\n- Fenster prüfen 🪟');
+    expect(useScenarioStore.getState().active.miete.mietspiegel.mittelwertProSqm).toBe(10.25);
 
     useScenarioStore.getState().deleteSaved(id);
     expect(useScenarioStore.getState().saved).toHaveLength(0);

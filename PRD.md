@@ -92,13 +92,33 @@ Allgemeine Arbeitsregeln:
 - Schreibe sauberen, testbaren Code mit klaren Schnittstellen. Rechenkern bleibt UI-frei und deterministisch.
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
-## Handover Naechster Thread (Stand: 2026-07-10)
-- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin- sowie Mietspiegel-/Notizen-/Visualisierungserweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (153/153 Tests).
+## Handover Naechster Thread (Stand: 2026-07-11)
+- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin-, Mietspiegel-/Notizen-/Visualisierungs- und PWA-Update-Erweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (157/157 Tests).
 - Offener Fokus: Keine offenen Stories.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
   2. Naechster sinnvoller Fokus ist gezielter UX-/Fachreview mit realen Objektbeispielen.
 - Verify-Setup: `cd app && npm run lint && npm run typecheck && npm run build && npm run test`.
+
+## Nachtraeglicher PWA-Update-Fix (Stand: 2026-07-11)
+
+- Die PWA (Progressive Web App) registriert ihren Service Worker ueber `virtual:pwa-register/react` im Prompt-Modus statt ueber das zuvor automatisch injizierte Minimal-Skript.
+- Sobald eine neue Version bereitsteht, zeigt die App einen festen Update-Hinweis mit den Aktionen `Spaeter` und `Jetzt neu laden`.
+- Das Neuladen erfolgt bewusst erst nach Nutzerbestaetigung, damit nicht gespeicherte Formulareingaben nicht durch ein automatisches Neuladen verloren gehen.
+- Bei Aktivierungsfehlern bleibt der Hinweis sichtbar und empfiehlt ein manuelles Neuladen.
+- Der Produktions-Build enthaelt kein separates `registerSW.js` mehr. Der wartende Service Worker wird ueber `SKIP_WAITING` aktiviert und die Seite danach neu geladen.
+
+Verify:
+```bash
+cd app
+npx vitest run src/components/PwaUpdatePrompt.test.tsx
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+Ergebnis: Zieltests 4/4 gruen; Gesamtsuite 157/157 gruen; Lint, Typecheck und Build gruen.
 
 ## Nachtraegliche Auth/Admin-Erweiterung (Stand: 2026-06-21)
 - Die Berechnungslogik bleibt client-seitig. Anmeldung, Profilstatus und optionale Cloud-Szenario-Synchronisation laufen ueber Supabase Auth, `profiles` und `scenarios`.

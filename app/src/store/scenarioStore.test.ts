@@ -76,6 +76,31 @@ describe('scenarioStore', () => {
     expect(useScenarioStore.getState().saved).toHaveLength(0);
   });
 
+  it('keeps the most recently saved scenario first', () => {
+    const first = createDefaultScenario({ name: 'Zuerst gespeichert' });
+    first.id = 'first';
+    const second = createDefaultScenario({ name: 'Zuletzt gespeichert' });
+    second.id = 'second';
+
+    useScenarioStore.getState().setActive(first);
+    useScenarioStore.getState().saveCurrent();
+    useScenarioStore.getState().setActive(second);
+    useScenarioStore.getState().saveCurrent();
+
+    expect(useScenarioStore.getState().saved.map((scenario) => scenario.id)).toEqual([
+      'second',
+      'first',
+    ]);
+
+    useScenarioStore.getState().loadSaved('first');
+    useScenarioStore.getState().saveCurrent();
+
+    expect(useScenarioStore.getState().saved.map((scenario) => scenario.id)).toEqual([
+      'first',
+      'second',
+    ]);
+  });
+
   it('resets the active scenario to defaults', () => {
     useScenarioStore.getState().updateActive((d) => {
       d.objekt.kaufpreis = 1;

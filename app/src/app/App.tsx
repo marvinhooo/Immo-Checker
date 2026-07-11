@@ -251,6 +251,20 @@ function InfoTooltip({ content }: { content: string }) {
   );
 }
 
+function SectionSaveButton({ onSave }: { onSave: () => void | Promise<void> }) {
+  return (
+    <div className="flex justify-end border-t border-slate-100 pt-4">
+      <button
+        type="button"
+        onClick={() => void onSave()}
+        className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-500/20"
+      >
+        Szenario speichern
+      </button>
+    </div>
+  );
+}
+
 export function App() {
   const active = useScenarioStore((s) => s.active);
   const saved = useScenarioStore((s) => s.saved);
@@ -1315,6 +1329,7 @@ export function App() {
                       </p>
                     </>
                   )}
+                  <SectionSaveButton onSave={handleSave} />
                 </div>
               )}
             </div>
@@ -1413,6 +1428,7 @@ export function App() {
                       <span className="font-bold text-slate-700">{formatEUR(totalInvest(active))}</span>
                     </div>
                   </div>
+                  <SectionSaveButton onSave={handleSave} />
                 </div>
               )}
             </div>
@@ -1591,6 +1607,7 @@ export function App() {
                       Eigenkapital reduziert Kaufpreis und Sanierung direkt. Kaufnebenkosten werden separat bar gezahlt oder anteilig fremdfinanziert.
                     </p>
                   </div>
+                  <SectionSaveButton onSave={handleSave} />
                 </div>
               )}
             </div>
@@ -1976,6 +1993,7 @@ export function App() {
                       )}
                     </div>
                   )}
+                  <SectionSaveButton onSave={handleSave} />
                 </div>
               )}
             </div>
@@ -2064,6 +2082,7 @@ export function App() {
                     step={0.1}
                     suffix="%"
                   />
+                  <SectionSaveButton onSave={handleSave} />
                 </div>
               )}
             </div>
@@ -2161,6 +2180,7 @@ export function App() {
                       ]}
                     />
                   </div>
+                  <SectionSaveButton onSave={handleSave} />
                 </div>
               )}
             </div>
@@ -2243,6 +2263,7 @@ export function App() {
                       </p>
                     )}
                   </div>
+                  <SectionSaveButton onSave={handleSave} />
                 </div>
               )}
             </div>
@@ -2384,6 +2405,7 @@ export function App() {
                       </ResponsiveContainer>
                     </div>
                   )}
+                  <SectionSaveButton onSave={handleSave} />
                 </div>
               )}
             </div>
@@ -2436,6 +2458,7 @@ export function App() {
                       suffix="%"
                     />
                   </div>
+                  <SectionSaveButton onSave={handleSave} />
                 </div>
               )}
             </div>
@@ -2459,7 +2482,7 @@ export function App() {
                 </span>
               </button>
               {openSection === 'notizen' && (
-                <div className="border-t border-slate-100 px-5 py-5">
+                <div className="border-t border-slate-100 px-5 py-5 space-y-4">
                   <label
                     htmlFor="scenario-notizen"
                     className="text-xs font-semibold uppercase tracking-wider text-slate-500"
@@ -2477,6 +2500,7 @@ export function App() {
                   <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">
                     Wird mit dem Szenario gespeichert und bei JSON-Exporten übernommen.
                   </p>
+                  <SectionSaveButton onSave={handleSave} />
                 </div>
               )}
             </div>

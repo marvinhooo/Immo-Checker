@@ -93,12 +93,30 @@ Allgemeine Arbeitsregeln:
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
 ## Handover Naechster Thread (Stand: 2026-07-11)
-- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin-, Mietspiegel-/Notizen-/Visualisierungs- und PWA-Update-Erweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (157/157 Tests).
+- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin-, Mietspiegel-/Notizen-/Visualisierungs-, PWA-Update- und dezentrale Speicher-UX-Erweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (158/158 Tests).
 - Offener Fokus: Keine offenen Stories.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
   2. Naechster sinnvoller Fokus ist gezielter UX-/Fachreview mit realen Objektbeispielen.
 - Verify-Setup: `cd app && npm run lint && npm run typecheck && npm run build && npm run test`.
+
+## Nachtraegliche Speicher-UX-Erweiterung (Stand: 2026-07-11)
+
+- Jeder der zehn Eingabeabschnitte enthaelt am Abschnittsende einen eigenen Button `Szenario speichern`; die zentrale Speicheraktion in der Szenarioleiste bleibt zusaetzlich erhalten.
+- Alle Speicherbuttons verwenden dieselbe bestehende Speicher- und Cloud-Synchronisationslogik inklusive Rueckfrage beim Ueberschreiben.
+- Die Liste gespeicherter Szenarien fuehrt das zuletzt gespeicherte Szenario zuerst. Beim Cloud-Laden wird nach `updated_at` absteigend sortiert und das zuletzt gespeicherte Szenario automatisch aktiv vorausgewaehlt.
+
+Verify:
+```bash
+cd app
+npx vitest run src/store/scenarioStore.test.ts
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+Ergebnis: Zieltests 15/15 gruen; Gesamtsuite 158/158 gruen; Lint, Typecheck und Build gruen.
 
 ## Nachtraeglicher PWA-Update-Fix (Stand: 2026-07-11)
 

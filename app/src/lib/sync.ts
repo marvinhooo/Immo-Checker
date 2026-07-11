@@ -6,7 +6,8 @@ export async function pullScenarios(userId: string): Promise<Scenario[]> {
   const { data, error } = await supabase
     .from('scenarios')
     .select('id, data')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
 
   if (error) throw new Error(`Sync-Pull fehlgeschlagen: ${error.message}`);
 

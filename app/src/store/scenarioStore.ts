@@ -41,7 +41,7 @@ export const useScenarioStore = create<ScenarioState>()((set, get) => ({
     const current = structuredClone(get().active);
     if (name) current.name = name;
     const rest = get().saved.filter((x) => x.id !== current.id);
-    set({ saved: [...rest, current] });
+    set({ saved: [current, ...rest] });
     return current.id;
   },
 

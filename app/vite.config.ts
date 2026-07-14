@@ -12,6 +12,9 @@ export default defineConfig({
       registerType: 'prompt',
       injectRegister: false,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+      },
       manifest: {
         name: 'Immobilien-Investment-Checker',
         short_name: 'Immo-Checker',

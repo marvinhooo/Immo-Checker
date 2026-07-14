@@ -75,7 +75,7 @@ import {
   ReferenceArea,
   ReferenceLine,
 } from 'recharts';
-import { Plus, Trash2, Download, AlertTriangle, CheckCircle, Info } from 'lucide-react';
+import { Plus, Trash2, Download, AlertTriangle, CheckCircle, Info, Building2, ChevronDown, Copy, Upload, FileSpreadsheet, Printer } from 'lucide-react';
 
 const TIMELINE_RULE_MIN_YEAR = 1;
 const TIMELINE_RULE_MAX_YEAR = 50;
@@ -865,7 +865,7 @@ export function App() {
 
   if (!user?.id || scenarioOwnerUserId !== user.id || isSyncing) {
     return (
-      <div className="min-h-screen bg-slate-50/50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
         <div className="text-center space-y-3">
           <div className="h-8 w-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-sm font-medium text-slate-500">Szenarien werden geladen...</p>
@@ -982,17 +982,22 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/50 text-slate-800 antialiased">
+    <div className="min-h-screen bg-slate-100 text-slate-800 antialiased">
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-md no-print">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
-              Immobilien-Investment-Checker
-            </h1>
-            <p className="text-xs font-medium text-slate-500 sm:text-sm">
-              Kapitalanlage-Rechner für private Anleger in Deutschland
-            </p>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs">
+              <Building2 size={20} strokeWidth={2} />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
+                Immobilien-Investment-Checker
+              </h1>
+              <p className="text-xs font-medium text-slate-500">
+                Kapitalanlage-Rechner für private Anleger in Deutschland
+              </p>
+            </div>
           </div>
           <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
             {isSyncing && (
@@ -1083,14 +1088,16 @@ export function App() {
           <div className="flex flex-wrap items-center gap-1.5 px-4 py-2.5">
             <button
               onClick={handleDuplicate}
-              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
             >
+              <Copy size={13} className="text-slate-400" />
               Duplizieren
             </button>
             <button
               onClick={handleDelete}
-              className="rounded-lg border border-rose-100 bg-rose-50/50 hover:bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-100 bg-rose-50/50 hover:bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 transition cursor-pointer"
             >
+              <Trash2 size={13} className="text-rose-400" />
               Löschen
             </button>
 
@@ -1105,24 +1112,27 @@ export function App() {
             />
             <button
               onClick={handleImportClick}
-              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
               title="Szenario(s) aus JSON-Datei importieren"
             >
+              <Upload size={13} className="text-slate-400" />
               Import
             </button>
             <button
               onClick={handleExportJSON}
-              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
               title="Aktuelles Szenario als JSON-Datei exportieren"
             >
+              <Download size={13} className="text-slate-400" />
               Export
             </button>
             {saved.length > 0 && (
               <button
                 onClick={handleExportAllJSON}
-                className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
                 title="Alle gespeicherten Szenarien als JSON-Bulk exportieren"
               >
+                <Download size={13} className="text-slate-400" />
                 Alle exportieren
               </button>
             )}
@@ -1131,16 +1141,18 @@ export function App() {
 
             <button
               onClick={handleExportCSV}
-              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
               title="Jahrestabelle als CSV (Excel-kompatibel) exportieren"
             >
+              <FileSpreadsheet size={13} className="text-slate-400" />
               CSV
             </button>
             <button
               onClick={handlePrintPDF}
-              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
               title="Ergebnisse als PDF drucken / speichern"
             >
+              <Printer size={13} className="text-slate-400" />
               PDF drucken
             </button>
           </div>
@@ -1158,8 +1170,9 @@ export function App() {
                 onClick={() => toggleSection('objekt')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <div className="flex flex-col">
-                  <span>1. Objekt & Kaufpreis</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'objekt' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>1</span>
+                  <span>Objekt & Kaufpreis</span>
                   {openSection !== 'objekt' && active.objekt.kaufpreis > 0 && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
                       {formatEUR(active.objekt.kaufpreis)} · {formatNumber(active.objekt.wohnflaeche, 0)} m² · {active.objekt.fertigstellungsjahr}
@@ -1167,7 +1180,7 @@ export function App() {
                   )}
                 </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'objekt' ? 'rotate-180' : ''}`}>
-                  ▼
+                  <ChevronDown size={16} className="text-slate-400" />
                 </span>
               </button>
               {openSection === 'objekt' && (
@@ -1349,8 +1362,9 @@ export function App() {
                 onClick={() => toggleSection('knk')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <div className="flex flex-col">
-                  <span>2. Kaufnebenkosten (KNK)</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'knk' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>2</span>
+                  <span>Kaufnebenkosten (KNK)</span>
                   {openSection !== 'knk' && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
                       {formatEUR(knkAmount(active))} ({formatPercent(active.knk.grestPct + active.knk.notarPct + active.knk.maklerPct, 2)})
@@ -1358,7 +1372,7 @@ export function App() {
                   )}
                 </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'knk' ? 'rotate-180' : ''}`}>
-                  ▼
+                  <ChevronDown size={16} className="text-slate-400" />
                 </span>
               </button>
               {openSection === 'knk' && (
@@ -1448,8 +1462,9 @@ export function App() {
                 onClick={() => toggleSection('finanzierung')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <div className="flex flex-col">
-                  <span>3. Finanzierung</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'finanzierung' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>3</span>
+                  <span>Finanzierung</span>
                   {openSection !== 'finanzierung' && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
                       {formatEUR(loanAmount(active))} · {formatPercent(active.finanzierung.sollzinsPct)} Zins · {formatPercent(active.finanzierung.tilgungPct)} Tilgung
@@ -1457,7 +1472,7 @@ export function App() {
                   )}
                 </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'finanzierung' ? 'rotate-180' : ''}`}>
-                  ▼
+                  <ChevronDown size={16} className="text-slate-400" />
                 </span>
               </button>
               {openSection === 'finanzierung' && (
@@ -1627,8 +1642,9 @@ export function App() {
                 onClick={() => toggleSection('miete')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <div className="flex flex-col">
-                  <span>4. Miete</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'miete' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>4</span>
+                  <span>Miete</span>
                   {openSection !== 'miete' && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
                       {formatEUR(active.miete.kaltmieteProMonat)}/Monat · {formatEUR(active.miete.kaltmieteProJahr)}/Jahr · {formatNumber(active.miete.kaltmieteProSqm, 2)} €/m²
@@ -1637,7 +1653,7 @@ export function App() {
                   )}
                 </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'miete' ? 'rotate-180' : ''}`}>
-                  ▼
+                  <ChevronDown size={16} className="text-slate-400" />
                 </span>
               </button>
               {openSection === 'miete' && (
@@ -2013,8 +2029,9 @@ export function App() {
                 onClick={() => toggleSection('kosten')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <div className="flex flex-col">
-                  <span>5. Laufende Kosten</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'kosten' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>5</span>
+                  <span>Laufende Kosten</span>
                   {openSection !== 'kosten' && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
                       {formatEUR(active.kosten.verwaltungProJahr)}/Jahr Verwaltung
@@ -2022,7 +2039,7 @@ export function App() {
                   )}
                 </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'kosten' ? 'rotate-180' : ''}`}>
-                  ▼
+                  <ChevronDown size={16} className="text-slate-400" />
                 </span>
               </button>
               {openSection === 'kosten' && (
@@ -2102,8 +2119,9 @@ export function App() {
                 onClick={() => toggleSection('steuer')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <div className="flex flex-col">
-                  <span>6. Steuer</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'steuer' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>6</span>
+                  <span>Steuer</span>
                   {openSection !== 'steuer' && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
                       {active.steuer.taxMode === 'income'
@@ -2114,7 +2132,7 @@ export function App() {
                   )}
                 </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'steuer' ? 'rotate-180' : ''}`}>
-                  ▼
+                  <ChevronDown size={16} className="text-slate-400" />
                 </span>
               </button>
               {openSection === 'steuer' && (
@@ -2200,8 +2218,9 @@ export function App() {
                 onClick={() => toggleSection('afa')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <div className="flex flex-col">
-                  <span>7. Abschreibung (AfA)</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'afa' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>7</span>
+                  <span>Abschreibung (AfA)</span>
                   {openSection !== 'afa' && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
                       {active.afa.modus === 'linear' ? `Linear ${formatPercent(active.afa.linearSatzPct)}` : active.afa.modus === 'degressiv' ? 'Degressiv 5 %' : active.afa.modus === 'denkmal7i' ? 'Denkmal §7i' : 'Sonder §7b'}
@@ -2209,7 +2228,7 @@ export function App() {
                   )}
                 </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'afa' ? 'rotate-180' : ''}`}>
-                  ▼
+                  <ChevronDown size={16} className="text-slate-400" />
                 </span>
               </button>
               {openSection === 'afa' && (
@@ -2283,8 +2302,9 @@ export function App() {
                 onClick={() => toggleSection('wertentwicklung')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <div className="flex flex-col">
-                  <span>8. Wertentwicklung</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'wertentwicklung' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>8</span>
+                  <span>Wertentwicklung</span>
                   {openSection !== 'wertentwicklung' && active.wertentwicklung.szenario.length > 0 && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
                       {active.wertentwicklung.szenario.map(r => r.kind === 'rate' ? `${formatPercent(r.percentPerYear)}/Jahr` : `${formatPercent(r.percent)} Sprung`).join(', ')}
@@ -2292,7 +2312,7 @@ export function App() {
                   )}
                 </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'wertentwicklung' ? 'rotate-180' : ''}`}>
-                  ▼
+                  <ChevronDown size={16} className="text-slate-400" />
                 </span>
               </button>
               {openSection === 'wertentwicklung' && (
@@ -2425,8 +2445,9 @@ export function App() {
                 onClick={() => toggleSection('exit')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <div className="flex flex-col">
-                  <span>9. Verkauf (Exit)</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'exit' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>9</span>
+                  <span>Verkauf (Exit)</span>
                   {openSection !== 'exit' && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
                       {active.exit.haltedauerJahre} Jahre Haltedauer
@@ -2434,7 +2455,7 @@ export function App() {
                   )}
                 </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'exit' ? 'rotate-180' : ''}`}>
-                  ▼
+                  <ChevronDown size={16} className="text-slate-400" />
                 </span>
               </button>
               {openSection === 'exit' && (
@@ -2478,8 +2499,9 @@ export function App() {
                 onClick={() => toggleSection('notizen')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
-                <div className="flex flex-col">
-                  <span>10. Notizen</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'notizen' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>10</span>
+                  <span>Notizen</span>
                   {openSection !== 'notizen' && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
                       {active.notizen.trim() ? 'Notizen vorhanden' : 'Keine Notizen'}
@@ -2487,7 +2509,7 @@ export function App() {
                   )}
                 </div>
                 <span className={`transform transition-transform duration-200 ${openSection === 'notizen' ? 'rotate-180' : ''}`}>
-                  ▼
+                  <ChevronDown size={16} className="text-slate-400" />
                 </span>
               </button>
               {openSection === 'notizen' && (

@@ -20,7 +20,7 @@ export function AuthGate() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50/50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
         <div className="text-center space-y-3">
           <div className="h-8 w-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-sm font-medium text-slate-500">Wird geladen...</p>
@@ -31,7 +31,7 @@ export function AuthGate() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-slate-50/50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
         <div className="w-full max-w-sm">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">
@@ -53,7 +53,7 @@ export function AuthGate() {
 
   if (authView === 'set-password') {
     return (
-      <div className="min-h-screen bg-slate-50/50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
         <div className="w-full max-w-sm">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <ResetPasswordForm />
@@ -65,7 +65,7 @@ export function AuthGate() {
 
   if (profile && !profile.approved) {
     return (
-      <div className="min-h-screen bg-slate-50/50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
         <div className="w-full max-w-sm text-center space-y-4">
           <div className="text-5xl">⏳</div>
           <h2 className="text-xl font-bold text-slate-900">Warten auf Freigabe</h2>
@@ -86,7 +86,7 @@ export function AuthGate() {
 
   if (!profile) {
     return (
-      <div className="min-h-screen bg-slate-50/50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
         <div className="text-center space-y-3">
           <div className="h-8 w-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-sm font-medium text-slate-500">Profil wird geladen...</p>

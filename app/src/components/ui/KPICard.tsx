@@ -25,19 +25,19 @@ export function KPICard({
         return {
           bg: 'bg-emerald-50/50 border-emerald-100',
           text: 'text-emerald-700',
-          indicator: 'bg-emerald-500',
+          indicator: 'bg-emerald-500 ring-emerald-500/15',
         };
       case 'negative':
         return {
           bg: 'bg-rose-50/50 border-rose-100',
           text: 'text-rose-700',
-          indicator: 'bg-rose-500',
+          indicator: 'bg-rose-500 ring-rose-500/15',
         };
       default:
         return {
           bg: 'bg-slate-50/30 border-slate-200/60',
           text: 'text-slate-600',
-          indicator: 'bg-slate-400',
+          indicator: 'bg-slate-400 ring-slate-400/15',
         };
     }
   };
@@ -63,7 +63,7 @@ export function KPICard({
             </Tooltip>
           )}
         </div>
-        <span className={`h-2.5 w-2.5 rounded-full ${trendStyles.indicator}`} />
+        <span className={`h-2 w-2 rounded-full ring-4 ${trendStyles.indicator}`} />
       </div>
       <div className="mt-2.5 flex items-baseline justify-between">
         <span className="break-words text-xl font-bold tracking-tight text-slate-800 tabular-nums sm:text-2xl">

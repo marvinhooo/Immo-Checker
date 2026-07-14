@@ -92,13 +92,32 @@ Allgemeine Arbeitsregeln:
 - Schreibe sauberen, testbaren Code mit klaren Schnittstellen. Rechenkern bleibt UI-frei und deterministisch.
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
-## Handover Naechster Thread (Stand: 2026-07-11)
-- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin-, Mietspiegel-/Notizen-/Visualisierungs-, PWA-Update- und dezentrale Speicher-UX-Erweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (158/158 Tests).
+## Handover Naechster Thread (Stand: 2026-07-15)
+- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin-, Mietspiegel-/Notizen-/Visualisierungs-, PWA-Update-, dezentrale Speicher-UX- und Dashboard-Jahresauswahl-Erweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (159/159 Tests).
 - Offener Fokus: Keine offenen Stories.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
   2. Naechster sinnvoller Fokus ist gezielter UX-/Fachreview mit realen Objektbeispielen.
 - Verify-Setup: `cd app && npm run lint && npm run typecheck && npm run build && npm run test`.
+
+## Nachtraegliche Dashboard-Jahresauswahl (Stand: 2026-07-15)
+
+- Der Cashflow-Bereich im Dashboard bietet eine Auswahl fuer jedes Jahr der aktuellen Haltedauer.
+- Das gewaehlte Jahr steuert sowohl die obere Monats-Cashflow-Kachel als auch die Detailwerte fuer Cashflow vor und nach Steuern pro Monat.
+- Beim Wechsel des Szenarios wird Jahr 1 vorausgewaehlt. Wird die Haltedauer verkuerzt, wird ein nicht mehr vorhandenes Auswahljahr auf das letzte Projektionsjahr begrenzt.
+- Haltedauerbezogene Renditewerte und der Netto-Exit bleiben von der Auswahl unberuehrt.
+
+Verify:
+```bash
+cd app
+npx vitest run src/app/App.test.tsx
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+Ergebnis: Zieltest 1/1 gruen; Gesamtsuite 159/159 gruen; Lint, Typecheck und Build gruen.
 
 ## Nachtraegliche Speicher-UX-Erweiterung (Stand: 2026-07-11)
 

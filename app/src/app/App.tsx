@@ -292,6 +292,7 @@ export function App() {
   const [openSection, setOpenSection] = useState<string>('objekt');
   const [activeChartTab, setActiveChartTab] = useState<string>('cashflow');
   const [activeTab, setActiveTab] = useState<'dashboard' | 'compare' | 'sensitivity' | 'etf' | 'holding'>('dashboard');
+  const [dashboardYear, setDashboardYear] = useState<number>(1);
 
   // Sensitivity analysis overrides
   const [sensSollzins, setSensSollzins] = useState<number | null>(null);
@@ -308,10 +309,18 @@ export function App() {
     setSensLeerstand(null);
     setSensWert(null);
     setSensAnschluss(null);
+    setDashboardYear(1);
   }, [active.id]);
 
   // Compute live calculations
   const proj = useMemo(() => runProjection(active), [active]);
+  const visibleDashboardYear = Math.min(Math.max(dashboardYear, 1), proj.years.length);
+  const selectedProjectionYear = proj.years[visibleDashboardYear - 1];
+
+  useEffect(() => {
+    setDashboardYear(visibleDashboardYear);
+  }, [visibleDashboardYear]);
+
   const cashBreakdown = useMemo(() => cashInvestmentBreakdown(active), [active]);
   const financingSchedule = useMemo(() => buildAmortizationSchedule({
     loanAmount: loanAmount(active),
@@ -2539,11 +2548,11 @@ export function App() {
                 tooltip="IRR ist der interne Zinsfuss der Eigenkapital-Cashflows inklusive laufender Cashflows und Verkaufserloes."
               />
               <KPICard
-                label="Cashflow Monat"
-                value={formatEUR(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0)}
-                trend={(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0) >= 0 ? 'positive' : 'negative'}
-                subtext={(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0) >= 0 ? 'Ueberschuss nach Steuer' : 'Zuzahlung nach Steuer'}
-                tooltip="Monatlicher Netto-Cashflow im ersten Jahr nach Zinsen, Tilgung, nicht umlagefaehigen Kosten und Steuereffekt."
+                label={`Cashflow Monat · Jahr ${selectedProjectionYear.jahr}`}
+                value={formatEUR(selectedProjectionYear.cashflowNachSteuerMonatlich)}
+                trend={selectedProjectionYear.cashflowNachSteuerMonatlich >= 0 ? 'positive' : 'negative'}
+                subtext={selectedProjectionYear.cashflowNachSteuerMonatlich >= 0 ? 'Ueberschuss nach Steuer' : 'Zuzahlung nach Steuer'}
+                tooltip="Monatlicher Netto-Cashflow im ausgewählten Jahr nach Zinsen, Tilgung, nicht umlagefaehigen Kosten und Steuereffekt."
               />
               <KPICard
                 label="Netto-Exit"
@@ -2557,20 +2566,33 @@ export function App() {
             <Card>
               <CardContent className="pt-5 space-y-1">
                 {/* Cashflow */}
-                <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pb-1">Cashflow (Jahr 1)</h3>
+                <div className="flex items-center justify-between gap-3 pb-1">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Cashflow</h3>
+                  <Select
+                    id="dashboard-cashflow-year"
+                    aria-label="Jahr für Cashflow auswählen"
+                    value={visibleDashboardYear}
+                    onChange={(event) => setDashboardYear(Number(event.target.value))}
+                    options={proj.years.map((year) => ({
+                      value: year.jahr,
+                      label: `Jahr ${year.jahr}`,
+                    }))}
+                    className="w-32 shrink-0"
+                  />
+                </div>
                 <div className="divide-y divide-slate-100">
                   {[
                     {
                       label: 'Cashflow nach Steuern / Monat',
-                      value: formatEUR(proj.years[0]?.cashflowNachSteuerMonatlich ?? 0),
-                      color: (proj.years[0]?.cashflowNachSteuerMonatlich ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700',
+                      value: formatEUR(selectedProjectionYear.cashflowNachSteuerMonatlich),
+                      color: selectedProjectionYear.cashflowNachSteuerMonatlich >= 0 ? 'text-emerald-700' : 'text-rose-700',
                       desc: 'Monatlicher Überschuss bzw. Zuzahlungsbedarf nach Steuern',
                       tooltip: 'Liquiditaet nach Steuereffekt. Tilgung ist ein Cash-Out, aber keine Werbungskosten.',
                     },
                     {
                       label: 'Cashflow vor Steuern / Monat',
-                      value: formatEUR(proj.years[0]?.cashflowVorSteuerMonatlich ?? 0),
-                      color: (proj.years[0]?.cashflowVorSteuerMonatlich ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700',
+                      value: formatEUR(selectedProjectionYear.cashflowVorSteuerMonatlich),
+                      color: selectedProjectionYear.cashflowVorSteuerMonatlich >= 0 ? 'text-emerald-700' : 'text-rose-700',
                       desc: 'Monatlicher Überschuss bzw. Zuzahlungsbedarf vor Steuern',
                     },
                   ].map((kpi) => (

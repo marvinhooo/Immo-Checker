@@ -103,7 +103,7 @@ export interface KostenInput {
   instandhaltungProSqm: number; // EUR/m2/Jahr (maintenanceMode = 'perSqm')
   instandhaltungPctRent: number; // % der Jahreskaltmiete (maintenanceMode = 'percentRent')
   instandhaltungAbsolut: number; // EUR/Jahr (maintenanceMode = 'absolute')
-  ruecklagenAnteilPct: number; // % der Instandhaltung, der Ruecklagenzufuehrung ist (Cash-out, aber nicht sofort als Werbungskosten abziehbar)
+  ruecklagenAnteilPct: number; // % der Instandhaltung, der WEG-Ruecklagenzufuehrung + kalkulatorische Reserve ist (Cash-out, aber nicht sofort als Werbungskosten abziehbar)
   verwaltungProJahr: number; // nicht-umlagefaehig, EUR/Jahr
   sonstigeKostenProJahr: number; // nicht-umlagefaehig, EUR/Jahr
   kostensteigerungPctPa: number; // % p. a. auf laufende Kosten

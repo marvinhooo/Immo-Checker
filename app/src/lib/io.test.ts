@@ -514,7 +514,7 @@ describe('io', () => {
       'Sanierungsauszahlung (€);Sanierungs-Werbungskosten (€);Objekt-AfA (€);Sanierungs-AfA (€);AfA gesamt (€)',
     );
     // Should contain formatted numbers with German comma separator
-    expect(csv).toContain('davon Rücklagenzuführung (nicht abziehbar) (€)');
+    expect(csv).toContain('davon Rücklage + kalk. Reserve (nicht sofort abziehbar) (€)');
     expect(csv).toContain(
       '1;12000,00;11400,00;600,00;1500,00;300,00;100,00;1900,00;250,00;5000,00;3000,00;0,00;8000,00;10000,00;2500,00;4000,00;500,00;4500,00;-100,00;-42,00;1500,00;1542,00;125,00;128,50;305000,00;197000,00;108000,00;64,59;1,43',
     );

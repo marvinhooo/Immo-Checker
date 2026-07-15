@@ -85,6 +85,21 @@ describe('Dashboard-Jahresauswahl', () => {
     expect(screen.getByRole('switch', { name: 'Modernisierung: Mieterhöhung ggf. möglich' })).toHaveAttribute('aria-checked', 'false');
   });
 
+  it('weist Rücklage und kalkulatorische Reserve gemeinsam als nicht sofort abziehbar aus', () => {
+    render(<App />);
+
+    const sectionButton = screen.getByText('Laufende Kosten').closest('button');
+    expect(sectionButton).not.toBeNull();
+    fireEvent.click(sectionButton as HTMLButtonElement);
+
+    expect(screen.getByText('davon Rücklage + kalkulatorische Reserve (%)')).toBeInTheDocument();
+    const hint = screen.getByText('nicht sofort abziehbar', { selector: 'strong' }).closest('p');
+    expect(hint).not.toBeNull();
+    expect(hint).toHaveTextContent('Erhaltungsrücklage der WEG');
+    expect(hint).toHaveTextContent('kalkulatorische Reserve für das Sondereigentum');
+    expect(hint).toHaveTextContent('Beides mindert den Cashflow, aber nicht das V&V-Ergebnis');
+  });
+
   it('zeigt markierte Modernisierungen als Prüfhinweis im Mietbereich', () => {
     const active = structuredClone(useScenarioStore.getState().active);
     active.sanierungen = [{

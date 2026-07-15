@@ -2212,7 +2212,7 @@ export function App() {
                   )}
                   <div className="space-y-1.5">
                     <Slider
-                      label="davon Rücklagenzuführung (%)"
+                      label="davon Rücklage + kalkulatorische Reserve (%)"
                       value={active.kosten.ruecklagenAnteilPct}
                       onChange={(val) => updateActive((d) => { d.kosten.ruecklagenAnteilPct = val; })}
                       min={0}
@@ -2221,9 +2221,11 @@ export function App() {
                       suffix="%"
                     />
                     <p className="text-[10px] leading-relaxed text-slate-500">
-                      Anteil der Instandhaltung, der als Zuführung zur Erhaltungsrücklage (WEG) oder kalkulatorische Reserve fließt:
-                      Er mindert den Cashflow, ist aber erst bei tatsächlicher Verausgabung als Werbungskosten abziehbar und
-                      reduziert daher nicht das V&amp;V-Ergebnis.
+                      Anteil der Instandhaltung, der <strong>nicht sofort abziehbar</strong> ist: die Zuführung zur
+                      Erhaltungsrücklage der WEG (Werbungskosten erst bei Verausgabung durch die WEG) und die
+                      kalkulatorische Reserve für das Sondereigentum (abziehbar erst bei tatsächlicher Reparatur).
+                      Beides mindert den Cashflow, aber nicht das V&amp;V-Ergebnis. Nur die laufenden
+                      Reparaturen/Erhaltungsaufwendungen des Jahres bleiben sofort abziehbar.
                     </p>
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

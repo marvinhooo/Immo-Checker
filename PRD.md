@@ -93,7 +93,7 @@ Allgemeine Arbeitsregeln:
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
 ## Handover Naechster Thread (Stand: 2026-07-15)
-- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin-, Mietspiegel-/Notizen-/Visualisierungs-, PWA-Update-, dezentrale Speicher-UX-, Dashboard-Jahresauswahl-, Sanierungsplanungs- und Fachreview-Korrektur-Erweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (178/178 Tests).
+- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin-, Mietspiegel-/Notizen-/Visualisierungs-, PWA-Update-, dezentrale Speicher-UX-, Dashboard-Jahresauswahl-, Sanierungsplanungs- und Fachreview-Korrektur-Erweiterung. Die Darstellung des nicht sofort abziehbaren Instandhaltungsanteils nennt WEG-Ruecklage und kalkulatorische Reserve ausdruecklich. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (179/179 Tests).
 - Offener Fokus: Keine offenen Stories.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
@@ -104,7 +104,7 @@ Allgemeine Arbeitsregeln:
 
 - DSCR bankueblich korrigiert: Zaehler ist jetzt Nettokaltmiete abzueglich Bewirtschaftungskosten geteilt durch den planmaessigen Kapitaldienst (Zins plus Tilgung); vorher fehlte der Kostenabzug.
 - Stufen-Mietsteigerungsregeln haben ein optionales Feld `wirksamAbMonat` (1 bis 12, Default 1): Die Erhoehung wirkt im Startjahr anteilig ab diesem Monat (§ 558b BGB), ab dem Folgejahr voll; Folgeraten verzinsen auf dem vollen Stufenwert. Die Regel-Anzeige zeigt weiterhin das volle neue Mietniveau fuer den Mietspiegel-Vergleich.
-- Neues Kosten-Feld `ruecklagenAnteilPct`: Der Anteil der Instandhaltung, der als Zufuehrung zur Erhaltungsruecklage (WEG) oder kalkulatorische Reserve fliesst, bleibt Cash-Abfluss, wird aber nicht mehr sofort als Werbungskosten abgezogen. Ausweis als eigene CSV-Spalte.
+- Neues Kosten-Feld `ruecklagenAnteilPct`: Der Anteil der Instandhaltung, der auf die WEG-Erhaltungsruecklage plus die kalkulatorische Reserve fuer das Sondereigentum entfaellt, bleibt Cash-Abfluss, wird aber nicht sofort als Werbungskosten abgezogen. Reglerhinweis und eigene CSV-Spalte benennen beide Bestandteile ausdruecklich.
 - AfA-Satz-Ableitung aus dem Baujahr greift jetzt in allen AfA-Modi (vorher nur linear): Baujahr-Aenderung, Objekttyp-Wechsel und Verfahrenswechsel leiten `linearSatzPct` einheitlich ueber `linearAfaRateForYear` ab; der Denkmal-Infotext zeigt den angewandten Altbau-Satz. Behebt veraltete 2,0 % bei Denkmal-Objekten mit Baujahr vor 1925.
 - Beide neuen Eingabefelder sind optional mit rueckwaertskompatiblen Defaults; bestehende Szenarien laden und rechnen unveraendert.
 

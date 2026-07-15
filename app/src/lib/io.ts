@@ -368,7 +368,7 @@ export function exportToCSV(years: ProjectionYear[]): string {
     'Verwaltungskosten (€)',
     'Sonstige Kosten (€)',
     'Bewirtschaftungskosten gesamt (€)',
-    'davon Rücklagenzuführung (nicht abziehbar) (€)',
+    'davon Rücklage + kalk. Reserve (nicht sofort abziehbar) (€)',
     'Zins (€)',
     'Tilgung (€)',
     'Sondertilgung (€)',

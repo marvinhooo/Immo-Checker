@@ -27,6 +27,7 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
     id: uuid(),
     name: 'Beispiel: ETW 300.000 EUR',
     notizen: '',
+    sanierungen: [],
     objekt: {
       kaufpreis,
       wohnflaeche,
@@ -77,6 +78,7 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
       instandhaltungProSqm: 20,
       instandhaltungPctRent: 8,
       instandhaltungAbsolut: 1200,
+      ruecklagenAnteilPct: 0,
       verwaltungProJahr: 360,
       sonstigeKostenProJahr: 300,
       kostensteigerungPctPa: 2,

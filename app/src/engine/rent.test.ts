@@ -187,6 +187,7 @@ describe('rent engine - projectCosts', () => {
       instandhaltungProSqm: 10, // 10 EUR / sqm / year
       instandhaltungPctRent: 0,
       instandhaltungAbsolut: 0,
+      ruecklagenAnteilPct: 0,
       verwaltungProJahr: 300,
       sonstigeKostenProJahr: 200,
       kostensteigerungPctPa: 2
@@ -219,6 +220,7 @@ describe('rent engine - projectCosts', () => {
       instandhaltungProSqm: 0,
       instandhaltungPctRent: 10, // 10% of rent
       instandhaltungAbsolut: 0,
+      ruecklagenAnteilPct: 0,
       verwaltungProJahr: 200,
       sonstigeKostenProJahr: 100,
       kostensteigerungPctPa: 3

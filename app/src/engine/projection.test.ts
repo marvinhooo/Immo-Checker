@@ -24,10 +24,22 @@ describe('Projection Engine', () => {
       expect(y.annuitaet).toBeCloseTo(y.zins + y.tilgung, 2);
 
       // V&V & Tax consistency
-      expect(y.vvErgebnis).toBeCloseTo(y.nettoKaltmiete - y.zins - y.afa - y.bewirtschaftungskosten, 2);
+      expect(y.afa).toBeCloseTo(y.objektAfa + y.sanierungsAfa, 2);
+      expect(y.vvErgebnis).toBeCloseTo(
+        y.nettoKaltmiete - y.zins - y.afa - (y.bewirtschaftungskosten - y.ruecklagenZufuehrung) - y.sanierungsWerbungskosten,
+        2,
+      );
       
       // Cashflow consistency
-      expect(y.cashflowVorSteuer).toBeCloseTo(y.nettoKaltmiete - y.zins - y.tilgung - y.sondertilgung - y.bewirtschaftungskosten, 2);
+      expect(y.cashflowVorSteuer).toBeCloseTo(
+        y.nettoKaltmiete
+          - y.zins
+          - y.tilgung
+          - y.sondertilgung
+          - y.bewirtschaftungskosten
+          - y.sanierungsauszahlung,
+        2,
+      );
       expect(y.cashflowNachSteuer).toBeCloseTo(y.cashflowVorSteuer - y.steuereffekt, 2);
 
       expect(y.cashflowVorSteuerMonatlich).toBeCloseTo(y.cashflowVorSteuer / 12, 2);
@@ -38,7 +50,7 @@ describe('Projection Engine', () => {
       expect(y.ltv).toBeCloseTo((y.restschuld / y.immobilienwert) * 100, 2);
 
       if (y.zins + y.tilgung > 0) {
-        expect(y.dscr).toBeCloseTo(y.nettoKaltmiete / (y.zins + y.tilgung), 4);
+        expect(y.dscr).toBeCloseTo((y.nettoKaltmiete - y.bewirtschaftungskosten) / (y.zins + y.tilgung), 4);
       } else {
         expect(y.dscr).toBe(0);
       }
@@ -90,6 +102,62 @@ describe('Projection Engine', () => {
       expect(y.eigenkapital).toBe(y.immobilienwert);
       expect(y.cashflowVorSteuer).toBeCloseTo(y.nettoKaltmiete - y.bewirtschaftungskosten, 2);
     });
+  });
+
+  it('includes planned renovations in cashflow, V&V and total AfA without changing rent', () => {
+    const base = createDefaultScenario({
+      steuer: {
+        taxMode: 'marginalRate',
+        bruttoJahresEinkommen: 50000,
+        grenzsteuersatzPct: 30,
+        veranlagung: 'single',
+        soli: false,
+        kirchensteuerPct: 0,
+      },
+      afa: { modus: 'linear', linearSatzPct: 2 },
+      exit: { haltedauerJahre: 3, verkaufsnebenkostenPct: 0, vorfaelligkeitPct: 0 },
+    });
+    const withRenovations = createDefaultScenario({
+      ...base,
+      sanierungen: [
+        {
+          id: 'direct',
+          bezeichnung: 'Direkter Aufwand',
+          jahr: 2,
+          betrag: 12000,
+          steuerart: 'sofort',
+          verteilungsJahre: 2,
+          mieterhoehungMoeglich: true,
+        },
+        {
+          id: 'manufacturing',
+          bezeichnung: 'Herstellungskosten',
+          jahr: 2,
+          betrag: 10000,
+          steuerart: 'herstellung',
+          verteilungsJahre: 2,
+          mieterhoehungMoeglich: true,
+        },
+      ],
+    });
+
+    const baseProjection = runProjection(base);
+    const renovationProjection = runProjection(withRenovations);
+    const baseYear2 = baseProjection.years[1];
+    const year2 = renovationProjection.years[1];
+
+    expect(year2.bruttoKaltmiete).toBe(baseYear2.bruttoKaltmiete);
+    expect(year2.nettoKaltmiete).toBe(baseYear2.nettoKaltmiete);
+    expect(year2.immobilienwert).toBe(baseYear2.immobilienwert);
+    expect(year2.sanierungsauszahlung).toBe(22000);
+    expect(year2.sanierungsWerbungskosten).toBe(12000);
+    expect(year2.objektAfa).toBe(baseYear2.afa);
+    expect(year2.sanierungsAfa).toBe(200);
+    expect(year2.afa).toBe(baseYear2.afa + 200);
+    expect(year2.vvErgebnis).toBeCloseTo(baseYear2.vvErgebnis - 12200, 2);
+    expect(year2.cashflowVorSteuer).toBeCloseTo(baseYear2.cashflowVorSteuer - 22000, 2);
+    expect(year2.steuereffekt).toBeCloseTo(baseYear2.steuereffekt - 3660, 2);
+    expect(year2.cashflowNachSteuer).toBeCloseTo(baseYear2.cashflowNachSteuer - 18340, 2);
   });
 
   it('includes unfinanced KNK cash gap in the initial equity investment', () => {
@@ -225,6 +293,47 @@ describe('Projection Engine', () => {
       expect(y.kumulierteSondertilgung).toBe(y.jahr * 2000);
       expect(y.kumuliertesEigenkapital).toBe(result.initialEquity + y.jahr * 2000);
     });
+  });
+
+  it('treats the Ruecklagenanteil as cash-out but not as immediately deductible', () => {
+    const base = createDefaultScenario({
+      steuer: {
+        taxMode: 'marginalRate',
+        bruttoJahresEinkommen: 50000,
+        grenzsteuersatzPct: 30,
+        veranlagung: 'single',
+        soli: false,
+        kirchensteuerPct: 0,
+      },
+      kosten: {
+        maintenanceMode: 'absolute',
+        instandhaltungProSqm: 0,
+        instandhaltungPctRent: 0,
+        instandhaltungAbsolut: 1000,
+        ruecklagenAnteilPct: 0,
+        verwaltungProJahr: 300,
+        sonstigeKostenProJahr: 100,
+        kostensteigerungPctPa: 0,
+      },
+    });
+    const withRuecklage = createDefaultScenario({
+      ...base,
+      kosten: { ...base.kosten, ruecklagenAnteilPct: 40 },
+    });
+
+    const baseYear1 = runProjection(base, 1).years[0];
+    const year1 = runProjection(withRuecklage, 1).years[0];
+
+    // 40 % von 1000 EUR Instandhaltung sind Ruecklagenzufuehrung
+    expect(year1.ruecklagenZufuehrung).toBeCloseTo(400, 2);
+    // Cash-out unveraendert (volle Bewirtschaftungskosten fliessen ab)
+    expect(year1.cashflowVorSteuer).toBeCloseTo(baseYear1.cashflowVorSteuer, 2);
+    expect(year1.bewirtschaftungskosten).toBeCloseTo(baseYear1.bewirtschaftungskosten, 2);
+    // V&V-Ergebnis steigt um den nicht abziehbaren Anteil
+    expect(year1.vvErgebnis).toBeCloseTo(baseYear1.vvErgebnis + 400, 2);
+    // Steuereffekt entsprechend hoeher (30 % Grenzsteuersatz)
+    expect(year1.steuereffekt).toBeCloseTo(baseYear1.steuereffekt + 120, 2);
+    expect(year1.cashflowNachSteuer).toBeCloseTo(baseYear1.cashflowNachSteuer - 120, 2);
   });
 
   it('should match a known snapshot of calculations for reproducibility', () => {

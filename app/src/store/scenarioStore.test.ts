@@ -56,6 +56,15 @@ describe('scenarioStore', () => {
       d.objekt.kaufpreis = 250000;
       d.notizen = 'Besichtigung:\n- Fenster prüfen 🪟';
       d.miete.mietspiegel.mittelwertProSqm = 10.25;
+      d.sanierungen = [{
+        id: 'reno-store',
+        bezeichnung: 'Neue Heizung',
+        jahr: 4,
+        betrag: 18000,
+        steuerart: 'herstellung',
+        verteilungsJahre: 2,
+        mieterhoehungMoeglich: true,
+      }];
     });
     const id = useScenarioStore.getState().saveCurrent('Test A');
     expect(useScenarioStore.getState().saved).toHaveLength(1);
@@ -66,11 +75,21 @@ describe('scenarioStore', () => {
       d.objekt.kaufpreis = 999999;
       d.notizen = '';
       d.miete.mietspiegel.mittelwertProSqm = 0;
+      d.sanierungen = [];
     });
     useScenarioStore.getState().loadSaved(id);
     expect(useScenarioStore.getState().active.objekt.kaufpreis).toBe(250000);
     expect(useScenarioStore.getState().active.notizen).toBe('Besichtigung:\n- Fenster prüfen 🪟');
     expect(useScenarioStore.getState().active.miete.mietspiegel.mittelwertProSqm).toBe(10.25);
+    expect(useScenarioStore.getState().active.sanierungen).toEqual([{
+      id: 'reno-store',
+      bezeichnung: 'Neue Heizung',
+      jahr: 4,
+      betrag: 18000,
+      steuerart: 'herstellung',
+      verteilungsJahre: 2,
+      mieterhoehungMoeglich: true,
+    }]);
 
     useScenarioStore.getState().deleteSaved(id);
     expect(useScenarioStore.getState().saved).toHaveLength(0);

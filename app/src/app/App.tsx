@@ -52,8 +52,22 @@ import { Tooltip } from '../components/ui/Tooltip';
 import { KPICard } from '../components/ui/KPICard';
 
 // Constants and Helpers
-import { BUNDESLAND_LABELS, GREST_BY_BUNDESLAND } from '../engine/constants';
-import type { Scenario, BodenwertMode, Bundesland, ObjektTyp, AfaModus, EquityMode, RentMode, MaintenanceMode, TaxMode, Veranlagung, IncreaseRule } from '../engine/types';
+import { BUNDESLAND_LABELS, GREST_BY_BUNDESLAND, linearAfaRateForYear } from '../engine/constants';
+import type {
+  Scenario,
+  BodenwertMode,
+  Bundesland,
+  ObjektTyp,
+  AfaModus,
+  EquityMode,
+  RentMode,
+  MaintenanceMode,
+  TaxMode,
+  Veranlagung,
+  IncreaseRule,
+  Sanierungsmassnahme,
+  SanierungSteuerart,
+} from '../engine/types';
 import { marginalRate } from '../engine/tax';
 import { projectSeries } from '../engine/timeline';
 import { createDefaultScenario } from '../engine/defaults';
@@ -161,6 +175,24 @@ function formatLoanTerm(months: number): string {
   if (remainingMonths === 0) return `${formatNumber(years, 0)} Jahre`;
   if (years === 0) return `${formatNumber(remainingMonths, 0)} Monate`;
   return `${formatNumber(years, 0)} Jahre ${formatNumber(remainingMonths, 0)} Monate`;
+}
+
+function sanierungSteuerInfo(steuerart: SanierungSteuerart, linearSatzPct: number): string {
+  switch (steuerart) {
+    case 'sofort':
+      return 'Als echter Erhaltungsaufwand mindert der Betrag das Ergebnis aus Vermietung und Verpachtung vollständig im Maßnahmenjahr.';
+    case 'verteilt':
+      return 'Größerer Erhaltungsaufwand wird ab dem Maßnahmenjahr gleichmäßig verteilt. § 82b setzt hier Privatvermögen und ein Gebäude mit überwiegender Wohnnutzung voraus.';
+    case 'herstellung':
+      return `Aktivierte Herstellungs- oder anschaffungsnahe Kosten werden ab dem Maßnahmenjahr mit ${formatPercent(linearSatzPct)} pro Jahr abgeschrieben.`;
+    case 'denkmal7i':
+      return 'Bei erfüllten Voraussetzungen: 9 % in den ersten acht Jahren und 7 % in den folgenden vier Jahren ab Abschluss der Maßnahme.';
+    case 'denkmal11b':
+      return 'Bescheinigter Denkmal-Erhaltungsaufwand wird ab dem Maßnahmenjahr gleichmäßig auf zwei bis fünf Jahre verteilt.';
+    case 'keine':
+    default:
+      return 'Die Auszahlung beeinflusst den Cashflow, wird steuerlich aber noch nicht berücksichtigt.';
+  }
 }
 
 function formatRuleInputValue(value: number): string {
@@ -453,14 +485,20 @@ export function App() {
         const current = d.miete.steigerungen[idx];
         const nextKind = updatedFields.kind ?? current.kind;
         if (nextKind === 'step') {
-          const percent = 'percent' in updatedFields 
-            ? updatedFields.percent 
+          const percent = 'percent' in updatedFields
+            ? updatedFields.percent
             : ('percentPerYear' in current ? current.percentPerYear : 1.0);
+          const wirksamAbMonat = 'wirksamAbMonat' in updatedFields
+            ? updatedFields.wirksamAbMonat
+            : ('wirksamAbMonat' in current ? current.wirksamAbMonat : undefined);
           d.miete.steigerungen[idx] = {
             id,
             kind: 'step',
             fromYear: clampTimelineYear(updatedFields.fromYear ?? current.fromYear),
             percent: clampTimelinePercent(percent ?? 1.0),
+            ...(wirksamAbMonat !== undefined
+              ? { wirksamAbMonat: clampIntegerInRange(wirksamAbMonat, 1, 12) }
+              : {}),
           };
         } else {
           const percentPerYear = 'percentPerYear' in updatedFields 
@@ -492,6 +530,39 @@ export function App() {
         fromYear: clampTimelineYear(maxYear > 0 ? maxYear + 1 : 1),
         percentPerYear: 1.5,
       });
+    });
+  };
+
+  const handleAddSanierung = () => {
+    updateActive((d) => {
+      const maxYear = d.sanierungen.reduce((max, massnahme) => Math.max(max, massnahme.jahr), 0);
+      d.sanierungen.push({
+        id: crypto.randomUUID(),
+        bezeichnung: 'Neue Sanierung',
+        jahr: clampIntegerInRange(maxYear > 0 ? maxYear + 1 : 1, 1, 40),
+        betrag: 0,
+        steuerart: 'keine',
+        verteilungsJahre: 2,
+        mieterhoehungMoeglich: false,
+      });
+    });
+  };
+
+  const handleUpdateSanierung = (id: string, fields: Partial<Sanierungsmassnahme>) => {
+    updateActive((d) => {
+      const massnahme = d.sanierungen.find((item) => item.id === id);
+      if (!massnahme) return;
+
+      Object.assign(massnahme, fields);
+      massnahme.jahr = clampIntegerInRange(massnahme.jahr, 1, 40);
+      massnahme.betrag = Math.max(0, massnahme.betrag);
+      massnahme.verteilungsJahre = clampIntegerInRange(massnahme.verteilungsJahre, 2, 5);
+    });
+  };
+
+  const handleDeleteSanierung = (id: string) => {
+    updateActive((d) => {
+      d.sanierungen = d.sanierungen.filter((massnahme) => massnahme.id !== id);
     });
   };
 
@@ -563,6 +634,18 @@ export function App() {
       active.miete.steigerungen
     ),
     [rentBase, active.objekt.wohnflaeche, active.miete.steigerungen]
+  );
+
+  const sanierungsSumme = useMemo(
+    () => active.sanierungen.reduce((sum, massnahme) => sum + massnahme.betrag, 0),
+    [active.sanierungen]
+  );
+
+  const mieterhoehungsHinweise = useMemo(
+    () => active.sanierungen
+      .filter((massnahme) => massnahme.mieterhoehungMoeglich)
+      .sort((a, b) => a.jahr - b.jahr || a.bezeichnung.localeCompare(b.bezeichnung, 'de')),
+    [active.sanierungen]
   );
 
   const mietspiegelAssessment = useMemo(
@@ -717,6 +800,7 @@ export function App() {
         Zins: Math.round(-y.zins),
         Tilgung: Math.round(-y.tilgung),
         Kosten: Math.round(costsVal),
+        Sanierung: Math.round(-y.sanierungsauszahlung),
         Steuereffekt: Math.round(taxVal),
         Cashflow: Math.round(y.cashflowNachSteuer),
       };
@@ -1239,14 +1323,15 @@ export function App() {
                       onChange={(val) => updateActive((d) => {
                         const year = clampIntegerInRange(val, 1, 2100);
                         d.objekt.fertigstellungsjahr = year;
-                        if (d.afa.modus === 'linear') {
-                          d.afa.linearSatzPct = year >= 2023 ? 3.0 : year < 1925 ? 2.5 : 2.0;
-                        }
+                        // Der lineare Satz ist Basis aller AfA-Modi (auch Denkmal-Altbau,
+                        // Degressiv-Wechsel und §7b), daher immer aus dem Baujahr ableiten.
+                        d.afa.linearSatzPct = linearAfaRateForYear(year);
                       })}
                     />
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Select
+                      id="objekt-typ"
                       label="Objekttyp"
                       value={active.objekt.objektTyp}
                       onChange={(e) => {
@@ -1255,8 +1340,10 @@ export function App() {
                           d.objekt.objektTyp = t;
                           if (t === 'denkmal') {
                             d.afa.modus = 'denkmal7i';
+                            d.afa.linearSatzPct = linearAfaRateForYear(d.objekt.fertigstellungsjahr);
                           } else if (d.afa.modus === 'denkmal7i') {
                             d.afa.modus = 'linear';
+                            d.afa.linearSatzPct = linearAfaRateForYear(d.objekt.fertigstellungsjahr);
                           }
                         });
                       }}
@@ -1338,13 +1425,14 @@ export function App() {
                   {active.objekt.objektTyp === 'denkmal' && (
                     <>
                       <NumberInput
-                        label="Sanierungskosten (Denkmal-Topf €)"
+                        label="Initiale Denkmal-Sanierung beim Kauf"
                         value={active.objekt.sanierungskosten}
                         suffix="EUR"
                         min={0}
                         onChange={(val) => updateActive((d) => { d.objekt.sanierungskosten = val; })}
                       />
                       <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                        Dieser Topf gehört zum Erwerb und zur anfänglichen Finanzierung. Spätere Maßnahmen bitte ausschließlich im Abschnitt „Sanierungen &amp; Modernisierungen“ erfassen, damit Kosten nicht doppelt angesetzt werden.<br />
                         Kosten für denkmalgerechte Sanierung, die nach §7i EStG abgeschrieben werden können (9 % × 8 Jahre + 7 % × 4 Jahre).
                         Hierzu zählen z. B. Dach, Fassade, Fenster, Heizung, Elektrik — sofern von der Denkmalschutzbehörde bescheinigt.
                         Nicht absetzbar: Kaufpreis, Grundstücksanteil, Eigenleistungen, reine Modernisierung ohne Denkmal-Bezug.
@@ -1774,6 +1862,29 @@ export function App() {
                     </p>
                   </div>
 
+                  {mieterhoehungsHinweise.length > 0 && (
+                    <div role="note" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-amber-900">
+                      <div className="flex items-start gap-2.5">
+                        <Info size={17} className="mt-0.5 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold">Mieterhöhung nach Modernisierung ggf. prüfen</div>
+                          <ul className="mt-1.5 space-y-1 text-xs leading-relaxed">
+                            {mieterhoehungsHinweise.map((massnahme) => (
+                              <li key={massnahme.id}>
+                                <strong>{massnahme.bezeichnung}</strong>: nach Abschluss in Jahr {massnahme.jahr} ggf. möglich
+                                {massnahme.jahr > active.exit.haltedauerJahre ? ' (außerhalb der Haltedauer)' : ''}.
+                              </li>
+                            ))}
+                          </ul>
+                          <p className="mt-2 text-[10px] leading-relaxed text-amber-800">
+                            Keine automatische Mietanpassung: Nach § 559 BGB kommen nur bestimmte Modernisierungen in Betracht. Erhaltungsanteile, Fördermittel, Ankündigung, Härtefälle und Kappungsgrenzen müssen gesondert geprüft werden.
+                            Eine angenommene Erhöhung tragen Sie anschließend separat als Mietsteigerungs-Regel ein.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <hr className="border-slate-100" />
 
                   {/* Flexible Miete-Rules */}
@@ -1795,6 +1906,7 @@ export function App() {
                             <th className="px-3 py-2 w-16">Ab Jahr</th>
                             <th className="px-3 py-2">Typ</th>
                             <th className="px-3 py-2 w-20">Wert</th>
+                            <th className="px-3 py-2 w-16">Ab Monat</th>
                             <th className="px-3 py-2 text-right w-10">Aktion</th>
                           </tr>
                         </thead>
@@ -1852,6 +1964,21 @@ export function App() {
                                       <span className="absolute right-1 text-[10px] text-slate-400 font-bold">%</span>
                                     </div>
                                   </td>
+                                  <td className="px-3 py-1.5">
+                                    {rule.kind === 'step' ? (
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        max="12"
+                                        value={rule.wirksamAbMonat ?? 1}
+                                        onChange={(e) => handleUpdateMieteRule(rule.id, { wirksamAbMonat: parseInt(e.target.value) || 1 })}
+                                        title="Wirksam ab Monat (§ 558b BGB: frühestens ab Beginn des 3. Monats nach Zugang). Das Jahr wird anteilig gerechnet."
+                                        className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs text-center focus:border-blue-500 focus:outline-none"
+                                      />
+                                    ) : (
+                                      <span className="block text-center text-slate-300">–</span>
+                                    )}
+                                  </td>
                                   <td className="px-3 py-1.5 text-right">
                                     <button
                                       type="button"
@@ -1864,7 +1991,7 @@ export function App() {
                                 </tr>
                                 {ruleResult && (
                                   <tr className="bg-slate-50/70">
-                                    <td colSpan={4} className="px-3 py-1.5 text-[10px] leading-relaxed text-slate-500">
+                                    <td colSpan={5} className="px-3 py-1.5 text-[10px] leading-relaxed text-slate-500">
                                       <span className="font-semibold text-slate-600">
                                         Ergebnis in Jahr {ruleResult.jahr} gemäß allen bis dahin wirksamen Regeln:
                                       </span>{' '}
@@ -1895,7 +2022,7 @@ export function App() {
                           })}
                           {active.miete.steigerungen.length === 0 && (
                             <tr>
-                              <td colSpan={4} className="px-3 py-3 text-center text-slate-400 italic">
+                              <td colSpan={5} className="px-3 py-3 text-center text-slate-400 italic">
                                 Keine Steigerungsregeln definiert (0% p.a.)
                               </td>
                             </tr>
@@ -2083,6 +2210,22 @@ export function App() {
                       onChange={(val) => updateActive((d) => { d.kosten.instandhaltungAbsolut = val; })}
                     />
                   )}
+                  <div className="space-y-1.5">
+                    <Slider
+                      label="davon Rücklagenzuführung (%)"
+                      value={active.kosten.ruecklagenAnteilPct}
+                      onChange={(val) => updateActive((d) => { d.kosten.ruecklagenAnteilPct = val; })}
+                      min={0}
+                      max={100}
+                      step={1}
+                      suffix="%"
+                    />
+                    <p className="text-[10px] leading-relaxed text-slate-500">
+                      Anteil der Instandhaltung, der als Zuführung zur Erhaltungsrücklage (WEG) oder kalkulatorische Reserve fließt:
+                      Er mindert den Cashflow, ist aber erst bei tatsächlicher Verausgabung als Werbungskosten abziehbar und
+                      reduziert daher nicht das V&amp;V-Ergebnis.
+                    </p>
+                  </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <NumberInput
                       label="Verwaltungskosten p. a."
@@ -2240,9 +2383,7 @@ export function App() {
                       const m = e.target.value as AfaModus;
                       updateActive((d) => {
                         d.afa.modus = m;
-                        if (m === 'linear') {
-                          d.afa.linearSatzPct = d.objekt.fertigstellungsjahr >= 2023 ? 3.0 : d.objekt.fertigstellungsjahr < 1925 ? 2.5 : 2.0;
-                        }
+                        d.afa.linearSatzPct = linearAfaRateForYear(d.objekt.fertigstellungsjahr);
                       });
                     }}
                     options={[
@@ -2287,7 +2428,8 @@ export function App() {
                     {active.afa.modus === 'denkmal7i' && (
                       <p>
                         ℹ️ <strong>Denkmal-AfA §7i:</strong> Abschreibung der Sanierungskosten zu{' '}
-                        <strong>100% über 12 Jahre</strong> (9,0% in J. 1-8, 7,0% in J. 9-12). Die Altbausubstanz (Anteil Gebäude-Kaufpreis) wird parallel linear abgeschrieben.
+                        <strong>100% über 12 Jahre</strong> (9,0% in J. 1-8, 7,0% in J. 9-12). Die Altbausubstanz (Anteil Gebäude-Kaufpreis) wird parallel linear mit{' '}
+                        <strong>{active.afa.linearSatzPct}% p. a.</strong> abgeschrieben (abgeleitet aus dem Baujahr).
                       </p>
                     )}
                   </div>
@@ -2296,14 +2438,186 @@ export function App() {
               )}
             </div>
 
-            {/* SEKTION 8: Wertentwicklung */}
+            {/* SEKTION 8: Geplante Sanierungen */}
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+              <button
+                onClick={() => toggleSection('sanierungen')}
+                className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
+              >
+                <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'sanierungen' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>8</span>
+                  <span>Sanierungen &amp; Modernisierungen</span>
+                  {openSection !== 'sanierungen' && (
+                    <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      {active.sanierungen.length === 0
+                        ? 'Keine Maßnahmen geplant'
+                        : `${active.sanierungen.length} ${active.sanierungen.length === 1 ? 'Maßnahme' : 'Maßnahmen'} · ${formatEUR(sanierungsSumme)}`}
+                    </span>
+                  )}
+                </div>
+                <span className={`transform transition-transform duration-200 ${openSection === 'sanierungen' ? 'rotate-180' : ''}`}>
+                  <ChevronDown size={16} className="text-slate-400" />
+                </span>
+              </button>
+              {openSection === 'sanierungen' && (
+                <div className="border-t border-slate-100 px-5 py-5 space-y-4">
+                  <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs leading-relaxed text-blue-900">
+                    <strong>Modellannahme:</strong> Das Projektjahr gilt vereinfachend als Zahlungs- und Abschlussjahr; Abschreibungen werden ab dann mit einem vollen Jahresbetrag angesetzt. Der Betrag fließt vollständig ab und wird nicht automatisch finanziert. Eine Wert- oder Mieterhöhung wird nicht automatisch angesetzt. Die steuerliche Auswahl ist eine Rechenannahme und muss insbesondere bei der 15-%-Grenze, Herstellungskosten und Denkmalmaßnahmen fachlich geprüft werden.
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Maßnahmenplan</div>
+                      <p className="mt-0.5 text-[11px] text-slate-400">Projektjahr, Auszahlung und steuerliche Behandlung je Maßnahme.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddSanierung}
+                      className="flex shrink-0 items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-blue-700 transition hover:bg-blue-100"
+                    >
+                      <Plus size={13} /> Maßnahme
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {active.sanierungen.map((massnahme, index) => (
+                      <div key={massnahme.id} className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-4">
+                        <div className="flex items-end gap-3">
+                          <div className="min-w-0 flex-1">
+                            <label htmlFor={`sanierung-name-${massnahme.id}`} className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                              Bezeichnung der Maßnahme {index + 1}
+                            </label>
+                            <input
+                              id={`sanierung-name-${massnahme.id}`}
+                              type="text"
+                              value={massnahme.bezeichnung}
+                              onChange={(event) => handleUpdateSanierung(massnahme.id, { bezeichnung: event.target.value })}
+                              onBlur={(event) => {
+                                if (!event.target.value.trim()) {
+                                  handleUpdateSanierung(massnahme.id, { bezeichnung: 'Sanierung' });
+                                }
+                              }}
+                              placeholder="z. B. Heizung, Bad oder Fassade"
+                              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 shadow-xs transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSanierung(massnahme.id)}
+                            aria-label={`${massnahme.bezeichnung || 'Sanierung'} löschen`}
+                            className="mb-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                          <NumberInput
+                            id={`sanierung-jahr-${massnahme.id}`}
+                            label="Projektjahr"
+                            value={massnahme.jahr}
+                            min={1}
+                            max={40}
+                            step={1}
+                            fractionDigits={0}
+                            inputMode="numeric"
+                            onChange={(value) => handleUpdateSanierung(massnahme.id, { jahr: value })}
+                          />
+                          <NumberInput
+                            id={`sanierung-betrag-${massnahme.id}`}
+                            label="Betrag"
+                            value={massnahme.betrag}
+                            suffix="EUR"
+                            min={0}
+                            fractionDigits={2}
+                            onChange={(value) => handleUpdateSanierung(massnahme.id, { betrag: value })}
+                          />
+                          <Select
+                            id={`sanierung-steuerart-${massnahme.id}`}
+                            label="Steuerliche Behandlung"
+                            value={massnahme.steuerart}
+                            onChange={(event) => handleUpdateSanierung(massnahme.id, {
+                              steuerart: event.target.value as SanierungSteuerart,
+                            })}
+                            options={[
+                              { value: 'sofort', label: 'Sofortabzug (Erhaltungsaufwand)' },
+                              { value: 'verteilt', label: 'Verteilung nach § 82b EStDV' },
+                              { value: 'herstellung', label: 'Gebäude-AfA (Herstellungskosten)' },
+                              { value: 'denkmal7i', label: 'Denkmal-AfA nach § 7i' },
+                              { value: 'denkmal11b', label: 'Denkmal-Erhaltungsaufwand § 11b' },
+                              { value: 'keine', label: 'Steuerlich noch offen' },
+                            ]}
+                          />
+                        </div>
+
+                        {(massnahme.steuerart === 'verteilt' || massnahme.steuerart === 'denkmal11b') && (
+                          <Select
+                            id={`sanierung-verteilung-${massnahme.id}`}
+                            label="Gleichmäßig verteilen über"
+                            value={massnahme.verteilungsJahre}
+                            onChange={(event) => handleUpdateSanierung(massnahme.id, {
+                              verteilungsJahre: Number(event.target.value),
+                            })}
+                            options={[2, 3, 4, 5].map((years) => ({
+                              value: years,
+                              label: `${years} Jahre`,
+                            }))}
+                            className="sm:max-w-xs"
+                          />
+                        )}
+
+                        <Toggle
+                          id={`sanierung-mieterhoehung-${massnahme.id}`}
+                          label="Modernisierung: Mieterhöhung ggf. möglich"
+                          description="Blendet im Mietbereich einen rechtlichen Prüfhinweis für das Maßnahmenjahr ein; die Miete selbst bleibt unverändert."
+                          checked={massnahme.mieterhoehungMoeglich}
+                          onChange={(checked) => handleUpdateSanierung(massnahme.id, { mieterhoehungMoeglich: checked })}
+                        />
+
+                        <div className="rounded-lg bg-white px-3 py-2.5 text-[11px] leading-relaxed text-slate-500">
+                          {sanierungSteuerInfo(massnahme.steuerart, active.afa.linearSatzPct)}
+                        </div>
+
+                        {massnahme.jahr <= 3 && massnahme.steuerart !== 'herstellung' && (
+                          <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-amber-700">
+                            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                            Die gesetzliche Drei-Jahres-Frist läuft taggenau ab dem Übergang des wirtschaftlichen Eigentums. Relevante Nettoaufwendungen können zusammen mehr als 15 % der Gebäude-Anschaffungskosten erreichen und dadurch als anschaffungsnahe Herstellungskosten gelten. Die App klassifiziert dies nicht automatisch um.
+                          </p>
+                        )}
+                        {(massnahme.steuerart === 'denkmal7i' || massnahme.steuerart === 'denkmal11b') && (
+                          <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-amber-700">
+                            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                            Die Denkmalbegünstigung setzt unter anderem Denkmaleigenschaft, vorherige Abstimmung und eine Bescheinigung der zuständigen Stelle voraus; Zuschüsse mindern die begünstigten Kosten.
+                          </p>
+                        )}
+                        {massnahme.jahr > active.exit.haltedauerJahre && (
+                          <p className="text-[10px] font-semibold text-slate-500">
+                            Außerhalb der aktuellen Haltedauer: Auszahlung und Steuerwirkung erscheinen nicht in der Projektion.
+                          </p>
+                        )}
+                      </div>
+                    ))}
+
+                    {active.sanierungen.length === 0 && (
+                      <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-400">
+                        Noch keine Sanierung oder Modernisierung geplant.
+                      </div>
+                    )}
+                  </div>
+
+                  <SectionSaveButton onSave={handleSave} />
+                </div>
+              )}
+            </div>
+
+            {/* SEKTION 9: Wertentwicklung */}
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('wertentwicklung')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
                 <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
-                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'wertentwicklung' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>8</span>
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'wertentwicklung' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>9</span>
                   <span>Wertentwicklung</span>
                   {openSection !== 'wertentwicklung' && active.wertentwicklung.szenario.length > 0 && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
@@ -2439,14 +2753,14 @@ export function App() {
               )}
             </div>
 
-            {/* SEKTION 9: Exit (Verkauf) */}
+            {/* SEKTION 10: Exit (Verkauf) */}
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('exit')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
                 <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
-                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'exit' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>9</span>
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'exit' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>10</span>
                   <span>Verkauf (Exit)</span>
                   {openSection !== 'exit' && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
@@ -2493,14 +2807,14 @@ export function App() {
               )}
             </div>
 
-            {/* SEKTION 10: Notizen */}
+            {/* SEKTION 11: Notizen */}
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('notizen')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
               >
                 <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
-                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'notizen' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>10</span>
+                  <span className={`row-span-2 flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-colors ${openSection === 'notizen' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>11</span>
                   <span>Notizen</span>
                   {openSection !== 'notizen' && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
@@ -2574,7 +2888,7 @@ export function App() {
                 value={formatEUR(selectedProjectionYear.cashflowNachSteuerMonatlich)}
                 trend={selectedProjectionYear.cashflowNachSteuerMonatlich >= 0 ? 'positive' : 'negative'}
                 subtext={selectedProjectionYear.cashflowNachSteuerMonatlich >= 0 ? 'Ueberschuss nach Steuer' : 'Zuzahlung nach Steuer'}
-                tooltip="Monatlicher Netto-Cashflow im ausgewählten Jahr nach Zinsen, Tilgung, nicht umlagefaehigen Kosten und Steuereffekt."
+                tooltip="Monatlicher Netto-Cashflow im ausgewählten Jahr nach Zinsen, Tilgung, nicht umlagefähigen Kosten, Sanierungsauszahlungen und Steuereffekt. Einmalige Jahresauszahlungen werden für diese Kennzahl durch zwölf geteilt."
               />
               <KPICard
                 label="Netto-Exit"
@@ -2629,6 +2943,19 @@ export function App() {
                       <span className={`text-base font-extrabold tabular-nums whitespace-nowrap ${kpi.color}`}>{kpi.value}</span>
                     </div>
                   ))}
+                  {selectedProjectionYear.sanierungsauszahlung > 0 && (
+                    <div className="flex items-baseline justify-between py-2.5">
+                      <div className="pr-4">
+                        <div className="text-sm font-semibold text-slate-700">Sanierungsauszahlung / Jahr</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          Einmaliger Abfluss; davon {formatEUR(selectedProjectionYear.sanierungsWerbungskosten + selectedProjectionYear.sanierungsAfa)} im Jahr steuerlich berücksichtigt
+                        </div>
+                      </div>
+                      <span className="whitespace-nowrap text-base font-extrabold tabular-nums text-rose-700">
+                        {formatEUR(-selectedProjectionYear.sanierungsauszahlung)}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Rendite */}
@@ -2813,6 +3140,7 @@ export function App() {
                       <Bar dataKey="Zins" stackId="neg" fill="#f43f5e" name="Zinsen" />
                       <Bar dataKey="Tilgung" stackId="neg" fill="#8b5cf6" name="Tilgung" />
                       <Bar dataKey="Kosten" stackId="neg" fill="#f59e0b" name="Kosten" />
+                      <Bar dataKey="Sanierung" stackId="neg" fill="#64748b" name="Sanierung" />
                       <Line type="monotone" dataKey="Cashflow" stroke="#0f172a" strokeWidth={2.5} name="Netto-Cashflow" dot={{ r: 2 }} />
                     </ComposedChart>
                   </ResponsiveContainer>

@@ -1,54 +1,75 @@
 import { IncreaseRule } from './types';
 
+export interface ProjectSeriesOptions {
+  /**
+   * Ignoriert wirksamAbMonat von Stufen-Regeln und weist im Stufenjahr den vollen
+   * neuen Stand aus (z. B. fuer die Anzeige des Mietniveaus nach der Erhoehung).
+   */
+  ignoreStepMonths?: boolean;
+}
+
 /**
  * Generates an array of values for each year (1 to years) based on a base value
  * and a list of step/rate increase rules.
- * 
+ *
  * - Year 1 (index 0) starts at `base`. If there is a step rule for Year 1, it is applied.
  * - For Year t (t > 1):
  *   1. We apply the active growth rate (defined by the 'rate' rule with the largest fromYear <= t).
  *   2. If there is a 'step' rule for Year t, we apply the one-time percentage increase.
+ *
+ * A step rule with wirksamAbMonat m > 1 only counts for the months m..12 of its fromYear
+ * (pro rata); from the following year on the full stepped value is carried forward.
  */
-export function projectSeries(base: number, rules: IncreaseRule[], years: number): number[] {
+export function projectSeries(
+  base: number,
+  rules: IncreaseRule[],
+  years: number,
+  options?: ProjectSeriesOptions
+): number[] {
   const result: number[] = [];
   if (years <= 0) return result;
 
-  // 1. Calculate Year 1
-  let val = base;
-  const year1Steps = rules.filter(r => r.kind === 'step' && r.fromYear === 1);
-  for (const step of year1Steps) {
-    if ('percent' in step) {
-      val = val * (1 + step.percent / 100);
+  const ignoreStepMonths = options?.ignoreStepMonths ?? false;
+
+  // Fortgeschriebener Stand mit voll angewandten Stufen (Basis fuer Folgejahre),
+  // unabhaengig vom anteilig ausgewiesenen Jahreswert.
+  let fullVal = base;
+
+  for (let t = 1; t <= years; t++) {
+    if (t > 1) {
+      // Find active rate for year t
+      const activeRateRule = rules
+        .filter(r => r.kind === 'rate' && r.fromYear <= t)
+        .reduce<IncreaseRule | null>((maxRule, currentRule) => {
+          if (!maxRule) return currentRule;
+          return currentRule.fromYear > maxRule.fromYear ? currentRule : maxRule;
+        }, null);
+
+      const ratePct = activeRateRule && 'percentPerYear' in activeRateRule
+        ? activeRateRule.percentPerYear
+        : 0;
+
+      // Apply rate (growth from year t-1 to t)
+      fullVal = fullVal * (1 + ratePct / 100);
     }
-  }
-  result.push(val);
-
-  // 2. Calculate Years 2 to N
-  for (let t = 2; t <= years; t++) {
-    // Find active rate for year t
-    const activeRateRule = rules
-      .filter(r => r.kind === 'rate' && r.fromYear <= t)
-      .reduce<IncreaseRule | null>((maxRule, currentRule) => {
-        if (!maxRule) return currentRule;
-        return currentRule.fromYear > maxRule.fromYear ? currentRule : maxRule;
-      }, null);
-
-    const ratePct = activeRateRule && 'percentPerYear' in activeRateRule
-      ? activeRateRule.percentPerYear
-      : 0;
-
-    // Apply rate (growth from year t-1 to t)
-    let currentVal = result[t - 2] * (1 + ratePct / 100);
 
     // Apply any steps for year t
+    let reportedVal = fullVal;
     const currentSteps = rules.filter(r => r.kind === 'step' && r.fromYear === t);
     for (const step of currentSteps) {
       if ('percent' in step) {
-        currentVal = currentVal * (1 + step.percent / 100);
+        fullVal = fullVal * (1 + step.percent / 100);
+
+        const month = !ignoreStepMonths && step.wirksamAbMonat !== undefined
+          ? Math.min(12, Math.max(1, Math.round(step.wirksamAbMonat)))
+          : 1;
+        // Anteil des Jahres, in dem die Stufe bereits wirkt (Monate month..12)
+        const activeFraction = (13 - month) / 12;
+        reportedVal = reportedVal * (1 + (step.percent / 100) * activeFraction);
       }
     }
 
-    result.push(currentVal);
+    result.push(reportedVal);
   }
 
   return result;

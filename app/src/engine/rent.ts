@@ -110,7 +110,8 @@ export function calculateRentRuleResults(
   if (rules.length === 0) return [];
 
   const maxRuleYear = Math.max(...rules.map((rule) => rule.fromYear));
-  const rentSeries = projectSeries(baseRentProMonat, rules, maxRuleYear);
+  // Anzeige des Mietniveaus NACH einer Stufe: wirksamAbMonat nicht anteilig einrechnen.
+  const rentSeries = projectSeries(baseRentProMonat, rules, maxRuleYear, { ignoreStepMonths: true });
 
   const firstRateIndexByYear = new Map<number, number>();
   rules.forEach((rule, index) => {

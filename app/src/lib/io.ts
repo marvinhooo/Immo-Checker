@@ -11,6 +11,14 @@ const TAX_MODES = ['income', 'marginalRate'] as const;
 const VERANLAGUNGEN = ['single', 'splitting'] as const;
 const AFA_MODI = ['linear', 'degressiv', 'sonder7b', 'denkmal7i'] as const;
 const RULE_KINDS = ['step', 'rate'] as const;
+const SANIERUNG_STEUERARTEN = [
+  'sofort',
+  'verteilt',
+  'herstellung',
+  'denkmal7i',
+  'denkmal11b',
+  'keine',
+] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -104,6 +112,9 @@ function validateIncreaseRules(value: unknown, label: string, prefix: string): v
     requireIntegerInRange(rule, 'fromYear', 1, 50, rulePrefix);
     if (kind === 'step') {
       requireNumberInRange(rule, 'percent', -100, 100, rulePrefix);
+      if (rule.wirksamAbMonat !== undefined && rule.wirksamAbMonat !== null) {
+        requireIntegerInRange(rule, 'wirksamAbMonat', 1, 12, rulePrefix);
+      }
     } else {
       requireNumberInRange(rule, 'percentPerYear', -100, 100, rulePrefix);
     }
@@ -126,6 +137,31 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   }
   if (requireNumber(s, 'schemaVersion', prefix) !== SCHEMA_VERSION) {
     throw new Error(`${prefix}Nicht unterstützte Schema-Version.`);
+  }
+
+  if (s.sanierungen === undefined || s.sanierungen === null) {
+    s.sanierungen = [];
+  } else if (!Array.isArray(s.sanierungen)) {
+    throw new Error(`${prefix}sanierungen muss ein Array sein.`);
+  } else {
+    const seenIds = new Set<string>();
+    s.sanierungen.forEach((massnahme, idx) => {
+      const massnahmePrefix = `${prefix}Sanierung [${idx + 1}]: `;
+      if (!isRecord(massnahme)) {
+        throw new Error(`${massnahmePrefix}Maßnahme muss ein Objekt sein.`);
+      }
+      const id = requireString(massnahme, 'id', massnahmePrefix);
+      if (seenIds.has(id)) {
+        throw new Error(`${prefix}Sanierungen enthalten die doppelte ID "${id}".`);
+      }
+      seenIds.add(id);
+      requireString(massnahme, 'bezeichnung', massnahmePrefix);
+      requireIntegerInRange(massnahme, 'jahr', 1, 40, massnahmePrefix);
+      requireNumberInRange(massnahme, 'betrag', 0, Number.MAX_SAFE_INTEGER, massnahmePrefix);
+      requireEnum(massnahme, 'steuerart', SANIERUNG_STEUERARTEN, massnahmePrefix);
+      requireIntegerInRange(massnahme, 'verteilungsJahre', 2, 5, massnahmePrefix);
+      requireBoolean(massnahme, 'mieterhoehungMoeglich', massnahmePrefix);
+    });
   }
 
   const objekt = requireSection(s, 'objekt', prefix);
@@ -212,6 +248,11 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   requireNumberInRange(kosten, 'instandhaltungProSqm', 0, Number.MAX_SAFE_INTEGER, prefix);
   requireNumberInRange(kosten, 'instandhaltungPctRent', 0, 100, prefix);
   requireNumberInRange(kosten, 'instandhaltungAbsolut', 0, Number.MAX_SAFE_INTEGER, prefix);
+  if (kosten.ruecklagenAnteilPct === undefined || kosten.ruecklagenAnteilPct === null) {
+    kosten.ruecklagenAnteilPct = 0;
+  } else {
+    requireNumberInRange(kosten, 'ruecklagenAnteilPct', 0, 100, prefix);
+  }
   requireNumberInRange(kosten, 'verwaltungProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
   requireNumberInRange(kosten, 'sonstigeKostenProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
   requireNumberInRange(kosten, 'kostensteigerungPctPa', 0, 100, prefix);
@@ -327,11 +368,16 @@ export function exportToCSV(years: ProjectionYear[]): string {
     'Verwaltungskosten (€)',
     'Sonstige Kosten (€)',
     'Bewirtschaftungskosten gesamt (€)',
+    'davon Rücklagenzuführung (nicht abziehbar) (€)',
     'Zins (€)',
     'Tilgung (€)',
     'Sondertilgung (€)',
     'Annuität (€)',
-    'AfA (€)',
+    'Sanierungsauszahlung (€)',
+    'Sanierungs-Werbungskosten (€)',
+    'Objekt-AfA (€)',
+    'Sanierungs-AfA (€)',
+    'AfA gesamt (€)',
     'V&V Ergebnis (€)',
     'Steuereffekt (€)',
     'Cashflow vor Steuer (€)',
@@ -357,10 +403,15 @@ export function exportToCSV(years: ProjectionYear[]): string {
       formatCsvNum(y.verwaltung),
       formatCsvNum(y.sonstigeKosten),
       formatCsvNum(y.bewirtschaftungskosten),
+      formatCsvNum(y.ruecklagenZufuehrung),
       formatCsvNum(y.zins),
       formatCsvNum(y.tilgung),
       formatCsvNum(y.sondertilgung),
       formatCsvNum(y.annuitaet),
+      formatCsvNum(y.sanierungsauszahlung),
+      formatCsvNum(y.sanierungsWerbungskosten),
+      formatCsvNum(y.objektAfa),
+      formatCsvNum(y.sanierungsAfa),
       formatCsvNum(y.afa),
       formatCsvNum(y.vvErgebnis),
       formatCsvNum(y.steuereffekt),

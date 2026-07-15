@@ -199,6 +199,67 @@ describe('io', () => {
     });
   });
 
+  it('should backfill an empty renovation list in schema-v1 scenarios', () => {
+    const parsed = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    delete parsed.sanierungen;
+
+    const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
+
+    expect(imported.schemaVersion).toBe(1);
+    expect(imported.sanierungen).toEqual([]);
+  });
+
+  it('should preserve and validate renovation measures on import', () => {
+    const scenario = createDefaultScenario({
+      sanierungen: [
+        {
+          id: 'reno-1',
+          bezeichnung: 'Denkmal-Erhaltungsaufwand',
+          jahr: 4,
+          betrag: 25000,
+          steuerart: 'denkmal11b',
+          verteilungsJahre: 5,
+          mieterhoehungMoeglich: true,
+        },
+      ],
+    });
+
+    const imported = importScenarios(exportScenario(scenario)) as Scenario;
+
+    expect(imported.sanierungen).toEqual(scenario.sanierungen);
+  });
+
+  it('should reject invalid renovation domains and duplicate IDs', () => {
+    const scenario = createDefaultScenario({
+      sanierungen: [
+        {
+          id: 'reno-1',
+          bezeichnung: 'Bad',
+          jahr: 41,
+          betrag: 1000,
+          steuerart: 'verteilt',
+          verteilungsJahre: 3,
+          mieterhoehungMoeglich: false,
+        },
+      ],
+    });
+    expect(() => importScenarios(exportScenario(scenario))).toThrow(
+      'jahr muss eine ganze Zahl zwischen 1 und 40 sein.',
+    );
+
+    scenario.sanierungen[0].jahr = 2;
+    scenario.sanierungen[0].verteilungsJahre = 6;
+    expect(() => importScenarios(exportScenario(scenario))).toThrow(
+      'verteilungsJahre muss eine ganze Zahl zwischen 2 und 5 sein.',
+    );
+
+    scenario.sanierungen[0].verteilungsJahre = 3;
+    scenario.sanierungen.push({ ...scenario.sanierungen[0] });
+    expect(() => importScenarios(exportScenario(scenario))).toThrow(
+      'Sanierungen enthalten die doppelte ID "reno-1".',
+    );
+  });
+
   it('should reject invalid note and Mietspiegel field types', () => {
     const sc = createDefaultScenario();
     const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
@@ -347,6 +408,53 @@ describe('io', () => {
     expect(imported.finanzierung.anschlussTilgungPct).toBe(3.5);
   });
 
+  it('should default a missing ruecklagenAnteilPct to 0 on import', () => {
+    const sc = createDefaultScenario();
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const kosten = parsed.kosten as Record<string, unknown>;
+    delete kosten.ruecklagenAnteilPct;
+
+    const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
+
+    expect(imported.kosten.ruecklagenAnteilPct).toBe(0);
+  });
+
+  it('should reject a ruecklagenAnteilPct outside 0-100', () => {
+    const sc = createDefaultScenario();
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const kosten = parsed.kosten as Record<string, unknown>;
+    kosten.ruecklagenAnteilPct = 101;
+
+    expect(() => importScenarios(JSON.stringify(parsed))).toThrow(
+      'ruecklagenAnteilPct muss eine Zahl zwischen 0 und 100 sein.'
+    );
+  });
+
+  it('should accept step rules with and without wirksamAbMonat and reject invalid months', () => {
+    const sc = createDefaultScenario({
+      miete: {
+        steigerungen: [
+          { id: 'step-1', kind: 'step', fromYear: 1, percent: 15, wirksamAbMonat: 3 },
+          { id: 'step-2', kind: 'step', fromYear: 4, percent: 10 },
+        ],
+      },
+    });
+
+    const imported = importScenarios(exportScenario(sc)) as Scenario;
+    const step1 = imported.miete.steigerungen[0];
+    expect(step1.kind).toBe('step');
+    expect(step1.kind === 'step' ? step1.wirksamAbMonat : undefined).toBe(3);
+
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const miete = parsed.miete as Record<string, unknown>;
+    const rules = miete.steigerungen as Array<Record<string, unknown>>;
+    rules[0].wirksamAbMonat = 13;
+
+    expect(() => importScenarios(JSON.stringify(parsed))).toThrow(
+      'wirksamAbMonat muss eine ganze Zahl zwischen 1 und 12 sein.'
+    );
+  });
+
   it('should reject imported Anschlusstilgung outside hard domain bounds', () => {
     const sc = createDefaultScenario();
     const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
@@ -369,10 +477,15 @@ describe('io', () => {
         verwaltung: 300,
         sonstigeKosten: 100,
         bewirtschaftungskosten: 1900,
+        ruecklagenZufuehrung: 250,
         zins: 5000,
         tilgung: 3000,
         sondertilgung: 0,
         annuitaet: 8000,
+        sanierungsauszahlung: 10000,
+        sanierungsWerbungskosten: 2500,
+        objektAfa: 4000,
+        sanierungsAfa: 500,
         afa: 4500,
         vvErgebnis: -100,
         steuereffekt: -42,
@@ -397,7 +510,13 @@ describe('io', () => {
     expect(csv.startsWith('\uFEFF')).toBe(true);
     // Should contain headers
     expect(csv).toContain('Jahr;Brutto-Kaltmiete (€);');
+    expect(csv).toContain(
+      'Sanierungsauszahlung (€);Sanierungs-Werbungskosten (€);Objekt-AfA (€);Sanierungs-AfA (€);AfA gesamt (€)',
+    );
     // Should contain formatted numbers with German comma separator
-    expect(csv).toContain('1;12000,00;11400,00;600,00;1500,00;300,00;100,00;1900,00;5000,00;3000,00;0,00;8000,00;4500,00;-100,00;-42,00;1500,00;1542,00;125,00;128,50;305000,00;197000,00;108000,00;64,59;1,43');
+    expect(csv).toContain('davon Rücklagenzuführung (nicht abziehbar) (€)');
+    expect(csv).toContain(
+      '1;12000,00;11400,00;600,00;1500,00;300,00;100,00;1900,00;250,00;5000,00;3000,00;0,00;8000,00;10000,00;2500,00;4000,00;500,00;4500,00;-100,00;-42,00;1500,00;1542,00;125,00;128,50;305000,00;197000,00;108000,00;64,59;1,43',
+    );
   });
 });

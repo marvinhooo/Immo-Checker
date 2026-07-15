@@ -18,16 +18,35 @@ export type RentMode = 'perMonth' | 'perYear' | 'perSqm';
 export type MaintenanceMode = 'perSqm' | 'percentRent' | 'absolute';
 export type TaxMode = 'income' | 'marginalRate';
 export type Veranlagung = 'single' | 'splitting';
+export type SanierungSteuerart =
+  | 'sofort'
+  | 'verteilt'
+  | 'herstellung'
+  | 'denkmal7i'
+  | 'denkmal11b'
+  | 'keine';
+
+export interface Sanierungsmassnahme {
+  id: string;
+  bezeichnung: string;
+  jahr: number; // Projektionsjahr 1..40
+  betrag: number; // EUR
+  steuerart: SanierungSteuerart;
+  verteilungsJahre: number; // 2..5; relevant fuer 'verteilt' und 'denkmal11b'
+  mieterhoehungMoeglich: boolean; // reiner Hinweis, keine automatische Mietsteigerung
+}
 
 /**
  * Eine Regel fuer flexible Zeitreihen (Miet- bzw. Wertsteigerung):
- * - 'step': einmalige Stufe von +percent % ab Jahr fromYear.
+ * - 'step': einmalige Stufe von +percent % ab Jahr fromYear. Optional wirksamAbMonat (1-12,
+ *   Default 1): Die Stufe greift erst ab diesem Monat, das Jahr fromYear wird anteilig
+ *   gerechnet (z. B. Mieterhoehung nach §558b BGB fruehestens ab Beginn des 3. Monats).
  * - 'rate': laufende Rate percentPerYear % p. a. ab Jahr fromYear (gilt bis zur naechsten 'rate'-Regel).
  * Beispiel "nach 3 J. +10 %, nach 15 J. +25 %, sonst 1,5 % p. a." = eine 'rate' ab Jahr 1
  * plus zwei 'step'-Regeln ab Jahr 3 und Jahr 15.
  */
 export type IncreaseRule =
-  | { id: string; kind: 'step'; fromYear: number; percent: number }
+  | { id: string; kind: 'step'; fromYear: number; percent: number; wirksamAbMonat?: number }
   | { id: string; kind: 'rate'; fromYear: number; percentPerYear: number };
 
 export interface ObjektInput {
@@ -84,6 +103,7 @@ export interface KostenInput {
   instandhaltungProSqm: number; // EUR/m2/Jahr (maintenanceMode = 'perSqm')
   instandhaltungPctRent: number; // % der Jahreskaltmiete (maintenanceMode = 'percentRent')
   instandhaltungAbsolut: number; // EUR/Jahr (maintenanceMode = 'absolute')
+  ruecklagenAnteilPct: number; // % der Instandhaltung, der Ruecklagenzufuehrung ist (Cash-out, aber nicht sofort als Werbungskosten abziehbar)
   verwaltungProJahr: number; // nicht-umlagefaehig, EUR/Jahr
   sonstigeKostenProJahr: number; // nicht-umlagefaehig, EUR/Jahr
   kostensteigerungPctPa: number; // % p. a. auf laufende Kosten
@@ -118,6 +138,7 @@ export interface Scenario {
   id: string;
   name: string;
   notizen: string;
+  sanierungen: Sanierungsmassnahme[];
   objekt: ObjektInput;
   knk: KaufnebenkostenInput;
   finanzierung: FinanzierungInput;

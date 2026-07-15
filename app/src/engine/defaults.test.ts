@@ -37,6 +37,7 @@ describe('createDefaultScenario', () => {
       obererSpannwertProSqm: 0,
     });
     expect(scenario.notizen).toBe('');
+    expect(scenario.sanierungen).toEqual([]);
     expect(scenario.kosten.instandhaltungProSqm).toBe(20);
   });
 });

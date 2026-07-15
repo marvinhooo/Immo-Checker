@@ -47,6 +47,47 @@ describe('timeline engine - projectSeries', () => {
     expect(result[15]).toBeCloseTo(expectedYear16, 4);
   });
 
+  it('should prorate a step with wirksamAbMonat in its first year and apply it fully afterwards', () => {
+    const rules: IncreaseRule[] = [
+      { id: 's1', kind: 'step', fromYear: 1, percent: 15, wirksamAbMonat: 3 }
+    ];
+    const result = projectSeries(100, rules, 3);
+    // Jahr 1: 2 Monate alt (100), 10 Monate neu (115) -> 100 * (1 + 0.15 * 10/12)
+    expect(result[0]).toBeCloseTo(100 * (1 + 0.15 * (10 / 12)), 4);
+    // Ab Jahr 2 gilt der volle neue Stand
+    expect(result[1]).toBeCloseTo(115, 4);
+    expect(result[2]).toBeCloseTo(115, 4);
+  });
+
+  it('should compound rates on the full stepped value, not the prorated year value', () => {
+    const rules: IncreaseRule[] = [
+      { id: 'r1', kind: 'rate', fromYear: 1, percentPerYear: 2 },
+      { id: 's1', kind: 'step', fromYear: 2, percent: 10, wirksamAbMonat: 7 }
+    ];
+    const result = projectSeries(100, rules, 3);
+    expect(result[0]).toBeCloseTo(100, 4);
+    // Jahr 2: Rate auf 102, Stufe ab Monat 7 -> 102 * (1 + 0.10 * 6/12)
+    expect(result[1]).toBeCloseTo(102 * 1.05, 4);
+    // Jahr 3: Rate auf dem VOLLEN Stufenwert 102 * 1.10
+    expect(result[2]).toBeCloseTo(102 * 1.10 * 1.02, 4);
+  });
+
+  it('should treat wirksamAbMonat 1 and undefined identically and support ignoreStepMonths', () => {
+    const withMonth: IncreaseRule[] = [
+      { id: 's1', kind: 'step', fromYear: 2, percent: 10, wirksamAbMonat: 1 }
+    ];
+    const withoutMonth: IncreaseRule[] = [
+      { id: 's1', kind: 'step', fromYear: 2, percent: 10 }
+    ];
+    expect(projectSeries(100, withMonth, 3)).toEqual(projectSeries(100, withoutMonth, 3));
+
+    const midYear: IncreaseRule[] = [
+      { id: 's1', kind: 'step', fromYear: 2, percent: 10, wirksamAbMonat: 7 }
+    ];
+    const ignored = projectSeries(100, midYear, 3, { ignoreStepMonths: true });
+    expect(ignored[1]).toBeCloseTo(110, 4);
+  });
+
   it('should handle rate overrides correctly', () => {
     const rules: IncreaseRule[] = [
       { id: 'r1', kind: 'rate', fromYear: 1, percentPerYear: 1 },

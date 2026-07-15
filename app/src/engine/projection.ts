@@ -5,6 +5,7 @@ import { projectRent, projectCosts } from './rent';
 import { projectSeries } from './timeline';
 import { projectAfa } from './afa';
 import { calculateTaxEffect } from './tax';
+import { projectRenovations } from './renovation';
 
 export interface ProjectionYear {
   jahr: number;
@@ -19,6 +20,7 @@ export interface ProjectionYear {
   verwaltung: number;
   sonstigeKosten: number;
   bewirtschaftungskosten: number; // Summe der nicht-umlagefähigen Kosten
+  ruecklagenZufuehrung: number; // Anteil der Instandhaltung, der Cash-out, aber nicht sofort abziehbar ist
   
   // Finanzierung (Jahreswerte)
   zins: number;
@@ -27,7 +29,13 @@ export interface ProjectionYear {
   annuitaet: number; // zins + tilgung (ohne Sondertilgung)
   
   // AfA
-  afa: number;
+  objektAfa: number;
+  sanierungsAfa: number;
+  afa: number; // Gesamt-AfA aus Objekt und geplanten Sanierungen
+
+  // Geplante Sanierungen
+  sanierungsauszahlung: number;
+  sanierungsWerbungskosten: number;
   
   // Steuer
   vvErgebnis: number;
@@ -98,7 +106,10 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
   // 4. AfA-Projektion berechnen
   const afaProjection = projectAfa(scenario, safeYears);
 
-  // 5. Immobilienwert-Entwicklung berechnen (Länge safeYears + 1 für Endwerte)
+  // 5. Geplante Sanierungen berechnen (Auszahlungen, Werbungskosten und Zusatz-AfA)
+  const renovationProjection = projectRenovations(scenario, safeYears);
+
+  // 6. Immobilienwert-Entwicklung berechnen (Länge safeYears + 1 für Endwerte)
   const valueSeries = projectSeries(scenario.objekt.kaufpreis, scenario.wertentwicklung.szenario, safeYears + 1);
 
   const years: ProjectionYear[] = [];
@@ -125,16 +136,29 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
     const sondertilgung = amortization.years[idx]?.sondertilgung || 0;
     const annuitaet = amortization.years[idx]?.annuitaet || 0;
 
-    // AfA
-    const afa = afaProjection[idx]?.afaAmount || 0;
+    // AfA & geplante Sanierungen
+    const objektAfa = afaProjection[idx]?.afaAmount || 0;
+    const sanierungsAfa = renovationProjection[idx]?.afa || 0;
+    const afa = objektAfa + sanierungsAfa;
+    const sanierungsauszahlung = renovationProjection[idx]?.auszahlung || 0;
+    const sanierungsWerbungskosten = renovationProjection[idx]?.werbungskosten || 0;
 
     // V&V Ergebnis & Steuereffekt
-    const vvErgebnis = nettoKaltmiete - zins - afa - bewirtschaftungskosten;
+    // Ruecklagenzufuehrungen (z. B. WEG-Erhaltungsruecklage) sind Cash-out, aber erst bei
+    // Verausgabung als Werbungskosten abziehbar - sie mindern das V&V-Ergebnis nicht.
+    const ruecklagenZufuehrung = instandhaltung * ((scenario.kosten.ruecklagenAnteilPct ?? 0) / 100);
+    const abziehbareBewirtschaftungskosten = bewirtschaftungskosten - ruecklagenZufuehrung;
+    const vvErgebnis = nettoKaltmiete - zins - afa - abziehbareBewirtschaftungskosten - sanierungsWerbungskosten;
     const steuereffekt = calculateTaxEffect(scenario, vvErgebnis);
 
     // Cashflow vor & nach Steuer
     // Tilgung und Sondertilgung sowie Zins und Bewirtschaftungskosten reduzieren die Liquidität
-    const cashflowVorSteuer = nettoKaltmiete - zins - tilgung - sondertilgung - bewirtschaftungskosten;
+    const cashflowVorSteuer = nettoKaltmiete
+      - zins
+      - tilgung
+      - sondertilgung
+      - bewirtschaftungskosten
+      - sanierungsauszahlung;
     const cashflowNachSteuer = cashflowVorSteuer - steuereffekt;
 
     const cashflowVorSteuerMonatlich = cashflowVorSteuer / 12;
@@ -149,9 +173,9 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
     const ltv = immobilienwert > 0 ? (restschuld / immobilienwert) * 100 : 0;
 
     // DSCR (Debt Service Coverage Ratio)
-    // Kapitaldienst = Zins + Tilgung
+    // Kapitaldienst = Zins + Tilgung; Zaehler bankueblich nach Bewirtschaftungskosten
     const debtService = zins + tilgung;
-    const dscr = debtService > 0 ? nettoKaltmiete / debtService : 0;
+    const dscr = debtService > 0 ? (nettoKaltmiete - bewirtschaftungskosten) / debtService : 0;
 
     // Akkumulatoren aktualisieren
     runningCashflowNachSteuer += cashflowNachSteuer;
@@ -169,11 +193,16 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
       verwaltung,
       sonstigeKosten,
       bewirtschaftungskosten,
+      ruecklagenZufuehrung,
       zins,
       tilgung,
       sondertilgung,
       annuitaet,
+      objektAfa,
+      sanierungsAfa,
       afa,
+      sanierungsauszahlung,
+      sanierungsWerbungskosten,
       vvErgebnis,
       steuereffekt,
       cashflowVorSteuer,

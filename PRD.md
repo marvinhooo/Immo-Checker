@@ -93,12 +93,53 @@ Allgemeine Arbeitsregeln:
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
 ## Handover Naechster Thread (Stand: 2026-07-15)
-- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin-, Mietspiegel-/Notizen-/Visualisierungs-, PWA-Update-, dezentrale Speicher-UX- und Dashboard-Jahresauswahl-Erweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (159/159 Tests).
+- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin-, Mietspiegel-/Notizen-/Visualisierungs-, PWA-Update-, dezentrale Speicher-UX-, Dashboard-Jahresauswahl-, Sanierungsplanungs- und Fachreview-Korrektur-Erweiterung. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (178/178 Tests).
 - Offener Fokus: Keine offenen Stories.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
   2. Naechster sinnvoller Fokus ist gezielter UX-/Fachreview mit realen Objektbeispielen.
 - Verify-Setup: `cd app && npm run lint && npm run typecheck && npm run build && npm run test`.
+
+## Nachtraegliche Fachreview-Korrekturen (Stand: 2026-07-15)
+
+- DSCR bankueblich korrigiert: Zaehler ist jetzt Nettokaltmiete abzueglich Bewirtschaftungskosten geteilt durch den planmaessigen Kapitaldienst (Zins plus Tilgung); vorher fehlte der Kostenabzug.
+- Stufen-Mietsteigerungsregeln haben ein optionales Feld `wirksamAbMonat` (1 bis 12, Default 1): Die Erhoehung wirkt im Startjahr anteilig ab diesem Monat (§ 558b BGB), ab dem Folgejahr voll; Folgeraten verzinsen auf dem vollen Stufenwert. Die Regel-Anzeige zeigt weiterhin das volle neue Mietniveau fuer den Mietspiegel-Vergleich.
+- Neues Kosten-Feld `ruecklagenAnteilPct`: Der Anteil der Instandhaltung, der als Zufuehrung zur Erhaltungsruecklage (WEG) oder kalkulatorische Reserve fliesst, bleibt Cash-Abfluss, wird aber nicht mehr sofort als Werbungskosten abgezogen. Ausweis als eigene CSV-Spalte.
+- AfA-Satz-Ableitung aus dem Baujahr greift jetzt in allen AfA-Modi (vorher nur linear): Baujahr-Aenderung, Objekttyp-Wechsel und Verfahrenswechsel leiten `linearSatzPct` einheitlich ueber `linearAfaRateForYear` ab; der Denkmal-Infotext zeigt den angewandten Altbau-Satz. Behebt veraltete 2,0 % bei Denkmal-Objekten mit Baujahr vor 1925.
+- Beide neuen Eingabefelder sind optional mit rueckwaertskompatiblen Defaults; bestehende Szenarien laden und rechnen unveraendert.
+
+Verify:
+```bash
+cd app
+npx vitest run src/engine/timeline.test.ts src/engine/projection.test.ts src/lib/io.test.ts src/app/App.test.tsx
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+Ergebnis: Gesamtsuite 178/178 gruen; Lint, Typecheck und Build gruen; UI-Verifikation im Browser mit nachgerechneten Referenzwerten.
+
+## Nachtraegliche Sanierungsplanung (Stand: 2026-07-15)
+
+- Ein eigener elfter Eingabeabschnitt verwaltet beliebig viele Sanierungen und Modernisierungen mit Bezeichnung, Projektjahr, Betrag und optionalem Hinweis auf eine gegebenenfalls moegliche Mieterhoehung.
+- Steuerliche Rechenannahmen: Sofortabzug fuer Erhaltungsaufwand, gleichmaessige Verteilung ueber zwei bis fuenf Jahre nach § 82b EStDV, regulaere Gebaeude-AfA fuer Herstellungskosten, Denkmal-AfA nach § 7i EStG, Denkmal-Erhaltungsaufwand nach § 11b EStG oder keine Steuerwirkung bei offener Einordnung.
+- Der volle Betrag ist im Massnahmenjahr ein unfinanzierter Cash-Abfluss. Werbungskosten und zusaetzliche AfA werden getrennt in das Ergebnis aus Vermietung und Verpachtung eingerechnet. Aktivierte und bis zum Exit ausgefuehrte Kosten werden fuer den Spekulationsgewinn als Herstellungskosten beruecksichtigt.
+- Das Projektjahr gilt vereinfachend als Zahlungs- und Abschlussjahr; Abschreibungen starten mit einem vollen Jahresbetrag. Die App warnt vor der taggenauen Drei-Jahres-/15-%-Pruefung und den Abstimmungs-/Bescheinigungsvoraussetzungen fuer Denkmalfaelle, klassifiziert diese aber nicht automatisch.
+- Sanierungen erhoehen weder Objektwert noch Miete automatisch. Markierte Modernisierungen erzeugen im Mietbereich einen Hinweis `nach Abschluss in Jahr X ggf. moeglich`; eine angenommene Erhoehung muss weiterhin ueber eine Mietsteigerungsregel eingetragen werden.
+- Cashflow-Chart, ausgewaehltes Jahresdetail und CSV-Export weisen Sanierungsauszahlungen beziehungsweise ihre Steuerkomponenten aus. Alte Schema-v1-Szenarien ohne `sanierungen` werden additiv mit einer leeren Liste geladen; Supabase benoetigt wegen JSONB keine SQL-Migration.
+
+Verify:
+```bash
+cd app
+npx vitest run src/engine/renovation.test.ts src/engine/projection.test.ts src/engine/exit.test.ts src/lib/io.test.ts src/store/scenarioStore.test.ts src/app/App.test.tsx
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+Ergebnis: Zieltests 68/68 gruen; Gesamtsuite 169/169 gruen; Lint, Typecheck und Build gruen.
 
 ## Nachtraegliche Dashboard-Jahresauswahl (Stand: 2026-07-15)
 
@@ -121,7 +162,7 @@ Ergebnis: Zieltest 1/1 gruen; Gesamtsuite 159/159 gruen; Lint, Typecheck und Bui
 
 ## Nachtraegliche Speicher-UX-Erweiterung (Stand: 2026-07-11)
 
-- Jeder der zehn Eingabeabschnitte enthaelt am Abschnittsende einen eigenen Button `Szenario speichern`; die zentrale Speicheraktion in der Szenarioleiste bleibt zusaetzlich erhalten.
+- Jeder der elf Eingabeabschnitte enthaelt am Abschnittsende einen eigenen Button `Szenario speichern`; die zentrale Speicheraktion in der Szenarioleiste bleibt zusaetzlich erhalten.
 - Alle Speicherbuttons verwenden dieselbe bestehende Speicher- und Cloud-Synchronisationslogik inklusive Rueckfrage beim Ueberschreiben.
 - Die Liste gespeicherter Szenarien fuehrt das zuletzt gespeicherte Szenario zuerst. Beim Cloud-Laden wird nach `updated_at` absteigend sortiert und das zuletzt gespeicherte Szenario automatisch aktiv vorausgewaehlt.
 

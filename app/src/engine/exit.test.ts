@@ -306,6 +306,72 @@ describe('Exit calculation Engine', () => {
     expect(exitRes.spekulationssteuer).toBe(0);
   });
 
+  it('adds only executed activated planned renovations and their AfA to the speculation calculation', () => {
+    const scenario = createDefaultScenario({
+      objekt: {
+        kaufpreis: 100000,
+        wohnflaeche: 50,
+        bodenwertMode: 'percent',
+        bodenwertAnteilPct: 100,
+        sanierungskosten: 0,
+      },
+      knk: {
+        grestPct: 0,
+        notarPct: 0,
+        maklerPct: 0,
+        mitfinanzieren: false,
+        finanzierungsPct: 0,
+      },
+      finanzierung: {
+        equityMode: 'percent',
+        equityPct: 100,
+        equityAbsolute: 100000,
+        sollzinsPct: 0,
+        tilgungPct: 0,
+        zinsbindungJahre: 10,
+        anschlusszinsPct: 0,
+        anschlussTilgungPct: null,
+        sondertilgungProJahr: 0,
+        disagioPct: 0,
+      },
+      afa: { modus: 'linear', linearSatzPct: 2 },
+      wertentwicklung: {
+        szenario: [{ id: 'growth', kind: 'rate', fromYear: 1, percentPerYear: 10 }],
+      },
+      exit: { haltedauerJahre: 5, verkaufsnebenkostenPct: 0, vorfaelligkeitPct: 0 },
+      sanierungen: [
+        {
+          id: 'direct', bezeichnung: 'Direktaufwand', jahr: 2, betrag: 30000,
+          steuerart: 'sofort', verteilungsJahre: 2, mieterhoehungMoeglich: false,
+        },
+        {
+          id: 'manufacturing', bezeichnung: 'Herstellung', jahr: 3, betrag: 10000,
+          steuerart: 'herstellung', verteilungsJahre: 2, mieterhoehungMoeglich: false,
+        },
+        {
+          id: 'monument', bezeichnung: 'Denkmal', jahr: 4, betrag: 5000,
+          steuerart: 'denkmal7i', verteilungsJahre: 2, mieterhoehungMoeglich: false,
+        },
+        {
+          id: 'future', bezeichnung: 'Spaetere Herstellung', jahr: 6, betrag: 20000,
+          steuerart: 'herstellung', verteilungsJahre: 2, mieterhoehungMoeglich: false,
+        },
+      ],
+    });
+
+    const projection = runProjection(scenario);
+    const exitRes = calculateExit(scenario, projection);
+
+    // Aktiviert: 10.000 + 5.000 EUR. Zusatz-AfA: 3 * 200 + 2 * 450 = 1.500 EUR.
+    expect(exitRes.aktivierteSanierungskosten).toBe(15000);
+    expect(projection.years.reduce((sum, year) => sum + year.sanierungsAfa, 0)).toBe(1500);
+    expect(exitRes.verkaufspreis).toBeCloseTo(100000 * 1.1 ** 5, 2);
+    expect(exitRes.spekulationsGewinn).toBeCloseTo(
+      exitRes.verkaufspreis - 100000 - 15000 + 1500,
+      2,
+    );
+  });
+
   it('uses the full tariff delta for speculation tax in income mode', () => {
     const scenario = createDefaultScenario({
       exit: {

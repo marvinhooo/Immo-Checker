@@ -2,6 +2,7 @@ import { Scenario } from './types';
 import { runProjection, ProjectionResult } from './projection';
 import { knkAmount } from './derive';
 import { applyFlatTaxSurchargesWithSoliFreigrenze, calculateTotalTax } from './tax';
+import { activatedRenovationCostsThroughYear } from './renovation';
 
 export interface ExitResult {
   verkaufspreis: number;
@@ -9,6 +10,7 @@ export interface ExitResult {
   restschuld: number;
   vorfaelligkeitsEntschaedigung: number;
   nettoVerkaufserloes: number; // before Spekulationssteuer
+  aktivierteSanierungskosten: number;
   spekulationsGewinn: number;
   spekulationssteuer: number;
   nettoVerkaufserloesNachSteuer: number; // nettoVerkaufserloes - spekulationssteuer
@@ -45,7 +47,11 @@ export function calculateExit(scenario: Scenario, projection?: ProjectionResult)
   const kumulierteAfa = proj.years.slice(0, h).reduce((sum, y) => sum + y.afa, 0);
   const kaufpreis = scenario.objekt.kaufpreis;
   const knk = knkAmount(scenario);
-  const anschaffungsUndHerstellungskosten = kaufpreis + knk + scenario.objekt.sanierungskosten;
+  const aktivierteSanierungskosten = activatedRenovationCostsThroughYear(scenario, h);
+  const anschaffungsUndHerstellungskosten = kaufpreis
+    + knk
+    + scenario.objekt.sanierungskosten
+    + aktivierteSanierungskosten;
 
   // Gewinn = Verkaufspreis - Verkaufskosten - Vorfaelligkeit - (Kaufpreis + KNK + Herstellungskosten) + kumulierte AfA
   const spekulationsGewinn = Math.max(
@@ -85,6 +91,7 @@ export function calculateExit(scenario: Scenario, projection?: ProjectionResult)
     restschuld,
     vorfaelligkeitsEntschaedigung,
     nettoVerkaufserloes,
+    aktivierteSanierungskosten,
     spekulationsGewinn,
     spekulationssteuer,
     nettoVerkaufserloesNachSteuer,

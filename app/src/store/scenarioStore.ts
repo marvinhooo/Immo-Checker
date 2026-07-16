@@ -19,6 +19,8 @@ interface ScenarioState {
   setSaved: (scenarios: Scenario[]) => void;
 }
 
+let latestCloudLoadRequestId = 0;
+
 export const useScenarioStore = create<ScenarioState>()((set, get) => ({
   ownerUserId: null,
   active: createDefaultScenario(),
@@ -54,6 +56,7 @@ export const useScenarioStore = create<ScenarioState>()((set, get) => ({
     set((s) => ({ saved: s.saved.filter((x) => x.id !== id) })),
 
   loadFromCloud: async (userId) => {
+    const requestId = ++latestCloudLoadRequestId;
     set({
       ownerUserId: userId,
       active: createDefaultScenario(),
@@ -62,15 +65,20 @@ export const useScenarioStore = create<ScenarioState>()((set, get) => ({
       syncError: null,
     });
     try {
-      const scenarios = await pullScenarios(userId);
-      if (get().ownerUserId !== userId) return;
+      const { scenarios, skippedInvalidRows } = await pullScenarios(userId);
+      if (get().ownerUserId !== userId || requestId !== latestCloudLoadRequestId) return;
       set({
         active: scenarios[0] ? structuredClone(scenarios[0]) : createDefaultScenario(),
         saved: scenarios,
         isSyncing: false,
+        syncError: skippedInvalidRows === 0
+          ? null
+          : skippedInvalidRows === 1
+            ? '1 Cloud-Szenario konnte wegen ungültiger Daten nicht geladen werden.'
+            : `${skippedInvalidRows} Cloud-Szenarien konnten wegen ungültiger Daten nicht geladen werden.`,
       });
     } catch (e) {
-      if (get().ownerUserId !== userId) return;
+      if (get().ownerUserId !== userId || requestId !== latestCloudLoadRequestId) return;
       set({
         active: createDefaultScenario(),
         saved: [],

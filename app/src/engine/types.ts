@@ -1,7 +1,7 @@
 // Zentrales Eingabe-Datenmodell des Immobilien-Investment-Checkers.
 // Reine Typdefinitionen - keine Logik, keine UI. Wird von Engine, Store und UI geteilt.
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export type Bundesland =
   | 'BW' | 'BY' | 'BE' | 'BB' | 'HB' | 'HH' | 'HE' | 'MV'
@@ -182,7 +182,7 @@ export interface AgentReview {
 }
 
 export interface Scenario {
-  schemaVersion: number;
+  schemaVersion: typeof SCHEMA_VERSION;
   id: string;
   name: string;
   notizen: string;

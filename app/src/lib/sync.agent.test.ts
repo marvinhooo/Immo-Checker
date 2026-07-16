@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createDefaultScenario } from '../engine/defaults';
 
 const mocks = vi.hoisted(() => {
   const query: Record<string, ReturnType<typeof vi.fn>> = {};
@@ -14,7 +15,7 @@ vi.mock('./supabase', () => ({
   supabase: { from: mocks.from },
 }));
 
-import { deleteRemoteAgentDraft, pullAgentDrafts } from './sync';
+import { deleteRemoteAgentDraft, pullAgentDrafts, pullScenarios } from './sync';
 
 describe('kontogebundene Agent-Draft-Synchronisation', () => {
   beforeEach(() => {
@@ -55,5 +56,28 @@ describe('kontogebundene Agent-Draft-Synchronisation', () => {
     expect(mocks.query.delete).toHaveBeenCalledOnce();
     expect(mocks.query.eq).toHaveBeenNthCalledWith(1, 'user_id', 'account-a');
     expect(mocks.query.eq).toHaveBeenNthCalledWith(2, 'id', 'draft-1');
+  });
+
+  it('meldet ungültige Cloud-Szenarien und behält gültige Zeilen', async () => {
+    const first = createDefaultScenario({ name: 'Gültig A' });
+    first.id = 'valid-a';
+    const invalid = createDefaultScenario({ name: 'Ungültig' });
+    invalid.id = 'invalid';
+    invalid.objekt.miteigentumsanteilZaehler = 1001;
+    invalid.objekt.miteigentumsanteilNenner = 1000;
+    const second = createDefaultScenario({ name: 'Gültig B' });
+    second.id = 'valid-b';
+
+    mocks.query.order.mockResolvedValueOnce({
+      data: [{ data: first }, { data: invalid }, { data: second }],
+      error: null,
+    });
+
+    await expect(pullScenarios('account-a')).resolves.toEqual({
+      scenarios: [first, second],
+      skippedInvalidRows: 1,
+    });
+    expect(mocks.from).toHaveBeenCalledWith('scenarios');
+    expect(mocks.query.eq).toHaveBeenCalledWith('user_id', 'account-a');
   });
 });

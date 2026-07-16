@@ -12,7 +12,7 @@ const syncMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../lib/sync', () => ({
-  pullScenarios: vi.fn(async () => []),
+  pullScenarios: vi.fn(async () => ({ scenarios: [], skippedInvalidRows: 0 })),
   pushScenarios: vi.fn(async () => {}),
   pushSingleScenario: vi.fn(async () => {}),
   deleteRemoteScenario: vi.fn(async () => {}),
@@ -99,7 +99,9 @@ describe('Agent-Draft-Ablauf', () => {
       'Szenario ist in diesem angemeldeten Konto nicht verfügbar.',
     );
 
-    window.immoCheckerAgent?.stageDraft(createAgentDraftExample());
+    act(() => {
+      window.immoCheckerAgent?.stageDraft(createAgentDraftExample());
+    });
     expect(await screen.findByText('Agent-Entwurf bereit: Objekt Musterstrasse')).toBeInTheDocument();
     expect(useScenarioStore.getState().active.name).toBe('Aktuelles Konto-Szenario');
 

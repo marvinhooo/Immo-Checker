@@ -24,6 +24,7 @@ const SANIERUNG_STEUERARTEN = [
 const AGENT_SOURCE_KINDS = ['pdf', 'web', 'api', 'text', 'manual'] as const;
 const AGENT_FIELD_STATUSES = ['missing', 'uncertain', 'confirmed', 'not_applicable', 'conflict'] as const;
 const AGENT_FIELD_ORIGINS = ['extracted', 'inferred', 'assumption', 'derived', 'user'] as const;
+const LEGACY_SCHEMA_VERSION = 1;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -43,6 +44,12 @@ function requireString(obj: Record<string, unknown>, key: string, prefix: string
     throw new Error(`${prefix}${key} muss ein nicht-leerer Text sein.`);
   }
   return value;
+}
+
+function requireLegacyFallback(isLegacySchema: boolean, key: string, prefix: string): void {
+  if (!isLegacySchema) {
+    throw new Error(`${prefix}${key} fehlt.`);
+  }
 }
 
 function requireOptionalString(
@@ -215,19 +222,23 @@ export function validateScenario(s: unknown, index?: number): Scenario {
 
   requireString(s, 'id', prefix);
   requireString(s, 'name', prefix);
+  const schemaVersion = requireNumber(s, 'schemaVersion', prefix);
+  if (schemaVersion !== LEGACY_SCHEMA_VERSION && schemaVersion !== SCHEMA_VERSION) {
+    throw new Error(`${prefix}Nicht unterstützte Schema-Version.`);
+  }
+  const isLegacySchema = schemaVersion === LEGACY_SCHEMA_VERSION;
   if (s.notizen === undefined || s.notizen === null) {
+    requireLegacyFallback(isLegacySchema, 'notizen', prefix);
     s.notizen = '';
   } else if (typeof s.notizen !== 'string') {
     throw new Error(`${prefix}notizen muss ein Text sein.`);
-  }
-  if (requireNumber(s, 'schemaVersion', prefix) !== SCHEMA_VERSION) {
-    throw new Error(`${prefix}Nicht unterstützte Schema-Version.`);
   }
   if (s.agentReview !== undefined && s.agentReview !== null) {
     validateAgentReview(s.agentReview, prefix);
   }
 
   if (s.sanierungen === undefined || s.sanierungen === null) {
+    requireLegacyFallback(isLegacySchema, 'sanierungen', prefix);
     s.sanierungen = [];
   } else if (!Array.isArray(s.sanierungen)) {
     throw new Error(`${prefix}sanierungen muss ein Array sein.`);
@@ -259,25 +270,58 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   requireEnum(objekt, 'bundesland', BUNDESLAENDER, prefix);
   requireEnum(objekt, 'objektTyp', OBJEKT_TYPEN, prefix);
   const bodenwertAnteilPct = requireNumberInRange(objekt, 'bodenwertAnteilPct', 0, 100, prefix);
-  if (objekt.bodenwertMode === undefined || objekt.bodenwertMode === null) {
+  const hasBodenwertMode = objekt.bodenwertMode !== undefined && objekt.bodenwertMode !== null;
+  const hasBodenrichtwertProSqm = objekt.bodenrichtwertProSqm !== undefined
+    && objekt.bodenrichtwertProSqm !== null;
+  if (isLegacySchema && hasBodenwertMode !== hasBodenrichtwertProSqm) {
+    throw new Error(`${prefix}Unvollständige Bodenwert-Angaben in Schema-Version 1.`);
+  }
+  if (!hasBodenwertMode) {
+    requireLegacyFallback(isLegacySchema, 'bodenwertMode', prefix);
     objekt.bodenwertMode = 'percent';
   } else {
     requireEnum(objekt, 'bodenwertMode', BODENWERT_MODES, prefix);
   }
-  if (objekt.bodenrichtwertProSqm === undefined || objekt.bodenrichtwertProSqm === null) {
+  if (!hasBodenrichtwertProSqm) {
+    requireLegacyFallback(isLegacySchema, 'bodenrichtwertProSqm', prefix);
     objekt.bodenrichtwertProSqm = (kaufpreis * (bodenwertAnteilPct / 100)) / wohnflaeche;
   } else {
     requireNumberInRange(objekt, 'bodenrichtwertProSqm', 0, Number.MAX_SAFE_INTEGER, prefix);
   }
-  const grundstuecksflaeche = objekt.grundstuecksflaeche === undefined || objekt.grundstuecksflaeche === null
-    ? (objekt.grundstuecksflaeche = 0)
-    : requireNumberInRange(objekt, 'grundstuecksflaeche', 0, Number.MAX_SAFE_INTEGER, prefix);
+  const hasGrundstuecksflaeche = objekt.grundstuecksflaeche !== undefined
+    && objekt.grundstuecksflaeche !== null;
   const hasMiteigentumsanteilZaehler = objekt.miteigentumsanteilZaehler !== undefined
     && objekt.miteigentumsanteilZaehler !== null;
   const hasMiteigentumsanteilNenner = objekt.miteigentumsanteilNenner !== undefined
     && objekt.miteigentumsanteilNenner !== null;
+  const plotShareFieldsPresent = Number(hasGrundstuecksflaeche)
+    + Number(hasMiteigentumsanteilZaehler)
+    + Number(hasMiteigentumsanteilNenner);
+  if (isLegacySchema && plotShareFieldsPresent > 0 && plotShareFieldsPresent < 3) {
+    throw new Error(`${prefix}Unvollständige Grundstücks-/MEA-Angaben in Schema-Version 1.`);
+  }
+  let grundstuecksflaeche: number;
+  if (!hasGrundstuecksflaeche) {
+    requireLegacyFallback(isLegacySchema, 'grundstuecksflaeche', prefix);
+    objekt.grundstuecksflaeche = 0;
+    grundstuecksflaeche = 0;
+  } else {
+    grundstuecksflaeche = requireNumberInRange(
+      objekt,
+      'grundstuecksflaeche',
+      0,
+      Number.MAX_SAFE_INTEGER,
+      prefix,
+    );
+  }
   if (grundstuecksflaeche > 0 && (!hasMiteigentumsanteilZaehler || !hasMiteigentumsanteilNenner)) {
     throw new Error(`${prefix}Bei einer Grundstücksfläche müssen MEA – Ihr Anteil und MEA – Objekt gesamt angegeben sein.`);
+  }
+  if (!hasMiteigentumsanteilZaehler) {
+    requireLegacyFallback(isLegacySchema, 'miteigentumsanteilZaehler', prefix);
+  }
+  if (!hasMiteigentumsanteilNenner) {
+    requireLegacyFallback(isLegacySchema, 'miteigentumsanteilNenner', prefix);
   }
   const miteigentumsanteilZaehler = objekt.miteigentumsanteilZaehler === undefined || objekt.miteigentumsanteilZaehler === null
     ? (objekt.miteigentumsanteilZaehler = 1)
@@ -296,6 +340,7 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   requireNumberInRange(knk, 'maklerPct', 0, 100, prefix);
   const knkMitfinanzieren = requireBoolean(knk, 'mitfinanzieren', prefix);
   if (knk.finanzierungsPct === undefined || knk.finanzierungsPct === null) {
+    requireLegacyFallback(isLegacySchema, 'finanzierungsPct', prefix);
     knk.finanzierungsPct = knkMitfinanzieren ? 100 : 0;
   } else {
     requireNumberInRange(knk, 'finanzierungsPct', 0, 100, prefix);
@@ -309,9 +354,10 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   requireNumberInRange(finanzierung, 'tilgungPct', 0, 100, prefix);
   requireIntegerInRange(finanzierung, 'zinsbindungJahre', 1, 30, prefix);
   requireNumberInRange(finanzierung, 'anschlusszinsPct', 0, 100, prefix);
-  if (finanzierung.anschlussTilgungPct === undefined || finanzierung.anschlussTilgungPct === null) {
+  if (finanzierung.anschlussTilgungPct === undefined) {
+    requireLegacyFallback(isLegacySchema, 'anschlussTilgungPct', prefix);
     finanzierung.anschlussTilgungPct = null;
-  } else {
+  } else if (finanzierung.anschlussTilgungPct !== null) {
     requireNumberInRange(finanzierung, 'anschlussTilgungPct', 0, 100, prefix);
   }
   requireNumberInRange(finanzierung, 'sondertilgungProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
@@ -321,9 +367,26 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   const rentMode = requireEnum(miete, 'rentMode', RENT_MODES, prefix);
   const kaltmieteProMonat = requireNumberInRange(miete, 'kaltmieteProMonat', 0, Number.MAX_SAFE_INTEGER, prefix);
   const kaltmieteProSqm = requireNumberInRange(miete, 'kaltmieteProSqm', 0, Number.MAX_SAFE_INTEGER, prefix);
-  const kaltmieteProJahr = miete.kaltmieteProJahr === undefined || miete.kaltmieteProJahr === null
-    ? (rentMode === 'perSqm' ? kaltmieteProSqm * wohnflaeche * 12 : kaltmieteProMonat * 12)
-    : requireNumberInRange(miete, 'kaltmieteProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
+  const hasKaltmieteProJahr = miete.kaltmieteProJahr !== undefined
+    && miete.kaltmieteProJahr !== null;
+  if (isLegacySchema && rentMode === 'perYear' && !hasKaltmieteProJahr) {
+    throw new Error(`${prefix}Unvollständige Jahresmiet-Angaben in Schema-Version 1.`);
+  }
+  let kaltmieteProJahr: number;
+  if (!hasKaltmieteProJahr) {
+    requireLegacyFallback(isLegacySchema, 'kaltmieteProJahr', prefix);
+    kaltmieteProJahr = rentMode === 'perSqm'
+      ? kaltmieteProSqm * wohnflaeche * 12
+      : kaltmieteProMonat * 12;
+  } else {
+    kaltmieteProJahr = requireNumberInRange(
+      miete,
+      'kaltmieteProJahr',
+      0,
+      Number.MAX_SAFE_INTEGER,
+      prefix,
+    );
+  }
   if (rentMode === 'perSqm') {
     const monthlyRent = kaltmieteProSqm * wohnflaeche;
     miete.kaltmieteProMonat = monthlyRent;
@@ -337,6 +400,7 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   }
   requireNumberInRange(miete, 'leerstandPct', 0, 100, prefix);
   if (miete.mietspiegel === undefined || miete.mietspiegel === null) {
+    requireLegacyFallback(isLegacySchema, 'mietspiegel', prefix);
     miete.mietspiegel = {
       untererSpannwertProSqm: 0,
       mittelwertProSqm: 0,
@@ -356,6 +420,7 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   requireNumberInRange(kosten, 'instandhaltungPctRent', 0, 100, prefix);
   requireNumberInRange(kosten, 'instandhaltungAbsolut', 0, Number.MAX_SAFE_INTEGER, prefix);
   if (kosten.ruecklagenAnteilPct === undefined || kosten.ruecklagenAnteilPct === null) {
+    requireLegacyFallback(isLegacySchema, 'ruecklagenAnteilPct', prefix);
     kosten.ruecklagenAnteilPct = 0;
   } else {
     requireNumberInRange(kosten, 'ruecklagenAnteilPct', 0, 100, prefix);
@@ -383,7 +448,13 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   requireIntegerInRange(exit, 'haltedauerJahre', 1, 40, prefix);
   const hasVerkaufsnebenkostenMode = exit.verkaufsnebenkostenMode !== undefined
     && exit.verkaufsnebenkostenMode !== null;
+  const hasVerkaufsnebenkostenAbsolut = exit.verkaufsnebenkostenAbsolut !== undefined
+    && exit.verkaufsnebenkostenAbsolut !== null;
+  if (isLegacySchema && hasVerkaufsnebenkostenMode !== hasVerkaufsnebenkostenAbsolut) {
+    throw new Error(`${prefix}Unvollständige Verkaufsnebenkosten-Angaben in Schema-Version 1.`);
+  }
   if (exit.verkaufsnebenkostenMode === undefined || exit.verkaufsnebenkostenMode === null) {
+    requireLegacyFallback(isLegacySchema, 'verkaufsnebenkostenMode', prefix);
     exit.verkaufsnebenkostenMode = 'percent';
   } else {
     requireEnum(exit, 'verkaufsnebenkostenMode', VERKAUFSNEBENKOSTEN_MODES, prefix);
@@ -393,12 +464,14 @@ export function validateScenario(s: unknown, index?: number): Scenario {
     if (hasVerkaufsnebenkostenMode && exit.verkaufsnebenkostenMode === 'absolute') {
       throw new Error(`${prefix}verkaufsnebenkostenAbsolut fehlt für den Pauschalmodus.`);
     }
+    requireLegacyFallback(isLegacySchema, 'verkaufsnebenkostenAbsolut', prefix);
     exit.verkaufsnebenkostenAbsolut = 2500;
   } else {
     requireNumberInRange(exit, 'verkaufsnebenkostenAbsolut', 0, Number.MAX_SAFE_INTEGER, prefix);
   }
   requireNumberInRange(exit, 'vorfaelligkeitPct', 0, 100, prefix);
 
+  s.schemaVersion = SCHEMA_VERSION;
   return s as unknown as Scenario;
 }
 
@@ -406,18 +479,21 @@ export function validateScenario(s: unknown, index?: number): Scenario {
  * Exports a single scenario as a JSON string.
  */
 export function exportScenario(scenario: Scenario): string {
-  return JSON.stringify(scenario, null, 2);
+  return JSON.stringify(validateScenario(structuredClone(scenario)), null, 2);
 }
 
 /**
  * Exports all saved scenarios as a JSON string.
  */
 export function exportAllScenarios(scenarios: Scenario[]): string {
+  const validatedScenarios = validateScenarioList(scenarios.map((scenario) => (
+    validateScenario(structuredClone(scenario))
+  )));
   return JSON.stringify(
     {
       type: 'immo-checker-export',
       version: SCHEMA_VERSION,
-      scenarios,
+      scenarios: validatedScenarios,
     },
     null,
     2
@@ -442,8 +518,17 @@ export function importScenarios(jsonString: string): Scenario | Scenario[] {
   if (parsed && typeof parsed === 'object') {
     const obj = parsed as Record<string, unknown>;
     if (obj.type === 'immo-checker-export') {
+      const exportVersion = requireNumber(obj, 'version', 'Bulk-Export: ');
+      if (exportVersion !== LEGACY_SCHEMA_VERSION && exportVersion !== SCHEMA_VERSION) {
+        throw new Error('Bulk-Export hat eine nicht unterstützte Schema-Version.');
+      }
       if (!Array.isArray(obj.scenarios)) {
         throw new Error('Bulk-Export enthält keine Liste von Szenarien.');
+      }
+      if (obj.scenarios.some((scenario) => (
+        !isRecord(scenario) || scenario.schemaVersion !== exportVersion
+      ))) {
+        throw new Error('Bulk-Export und enthaltene Szenarien haben unterschiedliche Schema-Versionen.');
       }
       return validateScenarioList(obj.scenarios.map((s: unknown, idx: number) => validateScenario(s, idx)));
     }

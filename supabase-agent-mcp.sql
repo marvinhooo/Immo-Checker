@@ -149,60 +149,9 @@ CREATE TABLE IF NOT EXISTS public.scenario_drafts (
 CREATE INDEX IF NOT EXISTS idx_scenario_drafts_user_updated
   ON public.scenario_drafts (user_id, updated_at DESC);
 
--- Gleiche generische JSON-Grenzen wie in der Edge Function: maximal zehn
--- Ebenen, maximal 120 Eintraege je Array/Objekt und keine Prototype-Schluessel.
-CREATE OR REPLACE FUNCTION public.is_bounded_agent_json(
-  value JSONB,
-  depth INTEGER DEFAULT 0
-)
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-IMMUTABLE
-STRICT
-SET search_path = public, pg_temp
-AS $$
-DECLARE
-  item JSONB;
-  pair RECORD;
-BEGIN
-  IF depth > 10 THEN
-    RETURN false;
-  END IF;
-
-  IF jsonb_typeof(value) = 'array' THEN
-    IF jsonb_array_length(value) > 120 THEN
-      RETURN false;
-    END IF;
-    FOR item IN SELECT child FROM jsonb_array_elements(value) AS entry(child) LOOP
-      IF NOT public.is_bounded_agent_json(item, depth + 1) THEN
-        RETURN false;
-      END IF;
-    END LOOP;
-  ELSIF jsonb_typeof(value) = 'object' THEN
-    IF (SELECT count(*) FROM jsonb_object_keys(value)) > 120 THEN
-      RETURN false;
-    END IF;
-    FOR pair IN SELECT key, child FROM jsonb_each(value) AS entry(key, child) LOOP
-      IF length(pair.key) > 160
-        OR pair.key IN ('__proto__', 'prototype', 'constructor')
-        OR NOT public.is_bounded_agent_json(pair.child, depth + 1)
-      THEN
-        RETURN false;
-      END IF;
-    END LOOP;
-  ELSIF jsonb_typeof(value) = 'number' THEN
-    IF abs((value #>> '{}')::NUMERIC) > 9007199254740991 THEN
-      RETURN false;
-    END IF;
-  ELSIF jsonb_typeof(value) NOT IN ('string', 'boolean', 'null') THEN
-    RETURN false;
-  END IF;
-
-  RETURN true;
-EXCEPTION WHEN OTHERS THEN
-  RETURN false;
-END;
-$$;
+-- Entfernt den in einem frueheren, moeglicherweise teilweise ausgefuehrten
+-- Migrationsstand angelegten, aber nie angebundenen generischen JSON-Helper.
+DROP FUNCTION IF EXISTS public.is_bounded_agent_json(JSONB, INTEGER);
 
 -- Der Draft-Vertrag akzeptiert nur echte ISO-Zeitstempel mit Zeitzone. Der
 -- Regex begrenzt das Format; dieser Cast faengt unmoegliche Kalenderwerte ab.
@@ -910,9 +859,9 @@ BEGIN
   RETURN EXISTS (
     SELECT 1
     FROM public.profiles AS profile
-    JOIN public.agent_oauth_grants AS grant
-      ON grant.user_id = profile.id
-     AND grant.client_id = token_client_id
+    JOIN public.agent_oauth_grants AS oauth_grant
+      ON oauth_grant.user_id = profile.id
+     AND oauth_grant.client_id = token_client_id
     WHERE profile.id = auth.uid()
       AND profile.approved = true
   );
@@ -1140,6 +1089,14 @@ BEGIN
   -- Dieser Claim darf ausschliesslich aus der serverseitigen Konfiguration kommen.
   claims := claims - 'immo_checker_mcp';
 
+  -- Auch wenn Supabase client_id nur als Hook-Event-Feld liefert, bleibt jedes
+  -- OAuth-Token von einer direkten Web-Session unterscheidbar. Der
+  -- Exception-Fallback verwendet deshalb dieselbe gehaertete Claim-Basis.
+  IF event_client_id_text IS NOT NULL AND claim_client_id_text IS NULL THEN
+    claims := jsonb_set(claims, '{client_id}', to_jsonb(event_client_id_text), true);
+    original_claims := jsonb_set(original_claims, '{client_id}', to_jsonb(event_client_id_text), true);
+  END IF;
+
   -- Wenn Hook-Event und Token-Claims beide eine User-ID liefern, muessen sie
   -- uebereinstimmen. Andernfalls wird der reservierte Claim fail-closed entfernt.
   IF event_user_id_text IS NOT NULL
@@ -1173,9 +1130,9 @@ BEGIN
     AND EXISTS (
       SELECT 1
       FROM public.profiles AS profile
-      JOIN public.agent_oauth_grants AS grant
-        ON grant.user_id = profile.id
-       AND grant.client_id = token_client_id
+      JOIN public.agent_oauth_grants AS oauth_grant
+        ON oauth_grant.user_id = profile.id
+       AND oauth_grant.client_id = token_client_id
       WHERE profile.id = token_user_id
         AND profile.approved = true
   )

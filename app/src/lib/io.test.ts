@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createDefaultScenario } from '../engine/defaults';
 import { exportScenario, exportAllScenarios, importScenarios, exportToCSV } from './io';
 import { ProjectionYear } from '../engine/projection';
-import { Scenario } from '../engine/types';
+import { SCHEMA_VERSION, Scenario } from '../engine/types';
 
 describe('io', () => {
   it('should export and import a single scenario correctly', () => {
@@ -21,9 +21,21 @@ describe('io', () => {
     const single = imported as Scenario;
     expect(single.name).toBe('Test Single Import');
     expect(single.objekt.kaufpreis).toBe(sc.objekt.kaufpreis);
-    expect(single.schemaVersion).toBe(1);
+    expect(single.schemaVersion).toBe(SCHEMA_VERSION);
     expect(single.notizen).toBe('Freie Notiz\nmit Umlaut: Küche');
     expect(single.miete.mietspiegel).toEqual(sc.miete.mietspiegel);
+  });
+
+  it('should preserve absolute exit costs in a schema-v2 roundtrip', () => {
+    const scenario = createDefaultScenario();
+    scenario.exit.verkaufsnebenkostenMode = 'absolute';
+    scenario.exit.verkaufsnebenkostenAbsolut = 4200;
+
+    const imported = importScenarios(exportScenario(scenario)) as Scenario;
+
+    expect(imported.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(imported.exit.verkaufsnebenkostenMode).toBe('absolute');
+    expect(imported.exit.verkaufsnebenkostenAbsolut).toBe(4200);
   });
 
   it('should export and import multiple scenarios correctly in bulk format', () => {
@@ -36,6 +48,7 @@ describe('io', () => {
     const json = exportAllScenarios([sc1, sc2]);
     const imported = importScenarios(json);
 
+    expect(JSON.parse(json)).toMatchObject({ version: SCHEMA_VERSION });
     expect(Array.isArray(imported)).toBe(true);
     const list = imported as Scenario[];
     expect(list.length).toBe(2);
@@ -44,13 +57,20 @@ describe('io', () => {
     expect(list[1].id).toBe('another-id');
   });
 
-  it('should reject duplicate scenario IDs in bulk imports', () => {
+  it('should reject duplicate scenario IDs in bulk exports and imports', () => {
     const sc1 = createDefaultScenario();
     sc1.id = 'duplicate-id';
     const sc2 = createDefaultScenario();
     sc2.id = 'duplicate-id';
 
-    expect(() => importScenarios(exportAllScenarios([sc1, sc2]))).toThrow(
+    expect(() => exportAllScenarios([sc1, sc2])).toThrow(
+      'Bulk-Import enthält doppelte Szenario-ID "duplicate-id".'
+    );
+    expect(() => importScenarios(JSON.stringify({
+      type: 'immo-checker-export',
+      version: SCHEMA_VERSION,
+      scenarios: [sc1, sc2],
+    }))).toThrow(
       'Bulk-Import enthält doppelte Szenario-ID "duplicate-id".'
     );
   });
@@ -149,6 +169,7 @@ describe('io', () => {
   it('should import old scenarios without Bodenrichtwert mode as percent mode', () => {
     const sc = createDefaultScenario();
     const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    parsed.schemaVersion = 1;
     const objekt = parsed.objekt as Record<string, unknown>;
     delete objekt.bodenwertMode;
     delete objekt.bodenrichtwertProSqm;
@@ -172,6 +193,7 @@ describe('io', () => {
       },
     });
     const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    parsed.schemaVersion = 1;
     const miete = parsed.miete as Record<string, unknown>;
     delete miete.kaltmieteProJahr;
 
@@ -185,6 +207,7 @@ describe('io', () => {
   it('should backfill notes and Mietspiegel values in old scenarios', () => {
     const sc = createDefaultScenario();
     const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    parsed.schemaVersion = 1;
     const miete = parsed.miete as Record<string, unknown>;
     delete parsed.notizen;
     delete miete.mietspiegel;
@@ -201,11 +224,12 @@ describe('io', () => {
 
   it('should backfill an empty renovation list in schema-v1 scenarios', () => {
     const parsed = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    parsed.schemaVersion = 1;
     delete parsed.sanierungen;
 
     const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
 
-    expect(imported.schemaVersion).toBe(1);
+    expect(imported.schemaVersion).toBe(SCHEMA_VERSION);
     expect(imported.sanierungen).toEqual([]);
   });
 
@@ -339,6 +363,7 @@ describe('io', () => {
   it('should import old scenarios without Anschlusstilgung as the legacy default', () => {
     const sc = createDefaultScenario();
     const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    parsed.schemaVersion = 1;
     const finanzierung = parsed.finanzierung as Record<string, unknown>;
     delete finanzierung.anschlussTilgungPct;
 
@@ -349,6 +374,7 @@ describe('io', () => {
 
   it('should backfill plot share and absolute exit-cost fields in old scenarios', () => {
     const parsed = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    parsed.schemaVersion = 1;
     const objekt = parsed.objekt as Record<string, unknown>;
     const exit = parsed.exit as Record<string, unknown>;
     delete objekt.grundstuecksflaeche;
@@ -364,6 +390,21 @@ describe('io', () => {
     expect(imported.objekt.miteigentumsanteilNenner).toBe(1);
     expect(imported.exit.verkaufsnebenkostenMode).toBe('percent');
     expect(imported.exit.verkaufsnebenkostenAbsolut).toBe(2500);
+    expect(imported.schemaVersion).toBe(SCHEMA_VERSION);
+  });
+
+  it('should preserve an interim schema-v1 absolute exit mode while migrating to v2', () => {
+    const parsed = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    parsed.schemaVersion = 1;
+    const exit = parsed.exit as Record<string, unknown>;
+    exit.verkaufsnebenkostenMode = 'absolute';
+    exit.verkaufsnebenkostenAbsolut = 4200;
+
+    const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
+
+    expect(imported.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(imported.exit.verkaufsnebenkostenMode).toBe('absolute');
+    expect(imported.exit.verkaufsnebenkostenAbsolut).toBe(4200);
   });
 
   it('should reject impossible plot shares', () => {
@@ -399,9 +440,93 @@ describe('io', () => {
     );
   });
 
+  it('should reject partial exit-cost fields and missing current-schema fields', () => {
+    const legacy = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    legacy.schemaVersion = 1;
+    delete (legacy.exit as Record<string, unknown>).verkaufsnebenkostenMode;
+
+    expect(() => importScenarios(JSON.stringify(legacy))).toThrow(
+      'Unvollständige Verkaufsnebenkosten-Angaben in Schema-Version 1.',
+    );
+
+    const current = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    delete current.notizen;
+
+    expect(() => importScenarios(JSON.stringify(current))).toThrow('notizen fehlt.');
+  });
+
+  it('should reject other partial schema-v1 field groups', () => {
+    const partialBodenwert = JSON.parse(
+      exportScenario(createDefaultScenario()),
+    ) as Record<string, unknown>;
+    partialBodenwert.schemaVersion = 1;
+    delete (partialBodenwert.objekt as Record<string, unknown>).bodenrichtwertProSqm;
+    expect(() => importScenarios(JSON.stringify(partialBodenwert))).toThrow(
+      'Unvollständige Bodenwert-Angaben in Schema-Version 1.',
+    );
+
+    const partialPlotShare = JSON.parse(
+      exportScenario(createDefaultScenario()),
+    ) as Record<string, unknown>;
+    partialPlotShare.schemaVersion = 1;
+    const partialPlotObject = partialPlotShare.objekt as Record<string, unknown>;
+    delete partialPlotObject.grundstuecksflaeche;
+    delete partialPlotObject.miteigentumsanteilNenner;
+    expect(() => importScenarios(JSON.stringify(partialPlotShare))).toThrow(
+      'Unvollständige Grundstücks-/MEA-Angaben in Schema-Version 1.',
+    );
+
+    const partialYearlyRent = JSON.parse(
+      exportScenario(createDefaultScenario()),
+    ) as Record<string, unknown>;
+    partialYearlyRent.schemaVersion = 1;
+    const partialRent = partialYearlyRent.miete as Record<string, unknown>;
+    partialRent.rentMode = 'perYear';
+    delete partialRent.kaltmieteProJahr;
+    expect(() => importScenarios(JSON.stringify(partialYearlyRent))).toThrow(
+      'Unvollständige Jahresmiet-Angaben in Schema-Version 1.',
+    );
+  });
+
+  it('should migrate a version-matched schema-v1 bulk export and reject mismatches', () => {
+    const legacyScenario = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    legacyScenario.schemaVersion = 1;
+    const legacyBulk = {
+      type: 'immo-checker-export',
+      version: 1,
+      scenarios: [legacyScenario],
+    };
+
+    const imported = importScenarios(JSON.stringify(legacyBulk)) as Scenario[];
+
+    expect(imported[0].schemaVersion).toBe(SCHEMA_VERSION);
+
+    legacyBulk.version = SCHEMA_VERSION;
+    expect(() => importScenarios(JSON.stringify(legacyBulk))).toThrow(
+      'Bulk-Export und enthaltene Szenarien haben unterschiedliche Schema-Versionen.',
+    );
+  });
+
+  it('should reject future scenario and bulk schema versions', () => {
+    const scenario = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    scenario.schemaVersion = SCHEMA_VERSION + 1;
+
+    expect(() => importScenarios(JSON.stringify(scenario))).toThrow(
+      'Nicht unterstützte Schema-Version.',
+    );
+
+    const bulk = JSON.parse(exportAllScenarios([createDefaultScenario()])) as Record<string, unknown>;
+    bulk.version = SCHEMA_VERSION + 1;
+
+    expect(() => importScenarios(JSON.stringify(bulk))).toThrow(
+      'Bulk-Export hat eine nicht unterstützte Schema-Version.',
+    );
+  });
+
   it('should import old scenarios without KNK-Fremdfinanzierungsanteil using the legacy boolean', () => {
     const sc = createDefaultScenario();
     const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    parsed.schemaVersion = 1;
     const knk = parsed.knk as Record<string, unknown>;
     knk.mitfinanzieren = true;
     delete knk.finanzierungsPct;
@@ -463,6 +588,7 @@ describe('io', () => {
   it('should default a missing ruecklagenAnteilPct to 0 on import', () => {
     const sc = createDefaultScenario();
     const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    parsed.schemaVersion = 1;
     const kosten = parsed.kosten as Record<string, unknown>;
     delete kosten.ruecklagenAnteilPct;
 

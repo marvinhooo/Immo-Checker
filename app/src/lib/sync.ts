@@ -11,13 +11,18 @@ export interface RemoteAgentDraft {
   updatedAt: string;
 }
 
+export interface PullScenariosResult {
+  scenarios: Scenario[];
+  skippedInvalidRows: number;
+}
+
 function isMissingAnalysisColumn(error: { code?: string; message?: string }): boolean {
   return error.code === 'PGRST204'
     || error.code === '42703'
     || Boolean(error.message?.includes("'analysis' column"));
 }
 
-export async function pullScenarios(userId: string): Promise<Scenario[]> {
+export async function pullScenarios(userId: string): Promise<PullScenariosResult> {
   const { data, error } = await supabase
     .from('scenarios')
     .select('id, data')
@@ -27,14 +32,15 @@ export async function pullScenarios(userId: string): Promise<Scenario[]> {
   if (error) throw new Error(`Sync-Pull fehlgeschlagen: ${error.message}`);
 
   const valid: Scenario[] = [];
+  let skippedInvalidRows = 0;
   for (const row of data ?? []) {
     try {
       valid.push(validateScenario(row.data));
     } catch {
-      // skip invalid rows
+      skippedInvalidRows += 1;
     }
   }
-  return valid;
+  return { scenarios: valid, skippedInvalidRows };
 }
 
 export async function pushScenarios(userId: string, scenarios: Scenario[]): Promise<void> {

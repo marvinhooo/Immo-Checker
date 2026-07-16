@@ -37,7 +37,7 @@ describe('scenarioStore', () => {
   it('loads a default scenario', () => {
     const { active } = useScenarioStore.getState();
     expect(active.objekt.kaufpreis).toBe(300000);
-    expect(active.schemaVersion).toBe(1);
+    expect(active.schemaVersion).toBe(2);
   });
 
   it('updates a field immutably via updateActive', () => {
@@ -140,7 +140,10 @@ describe('scenarioStore', () => {
       isSyncing: false,
       syncError: null,
     });
-    pullScenariosMock.mockResolvedValueOnce([ownScenario]);
+    pullScenariosMock.mockResolvedValueOnce({
+      scenarios: [ownScenario],
+      skippedInvalidRows: 0,
+    });
 
     const loading = useScenarioStore.getState().loadFromCloud('account-b');
 
@@ -152,6 +155,39 @@ describe('scenarioStore', () => {
 
     expect(useScenarioStore.getState().saved).toEqual([ownScenario]);
     expect(useScenarioStore.getState().active.name).toBe('Account B');
+    expect(useScenarioStore.getState().syncError).toBeNull();
+  });
+
+  it('keeps valid cloud scenarios while reporting skipped invalid rows', async () => {
+    const ownScenario = createDefaultScenario({ name: 'Gültiges Cloud-Szenario' });
+    ownScenario.id = 'valid-cloud-scenario';
+    pullScenariosMock.mockResolvedValueOnce({
+      scenarios: [ownScenario],
+      skippedInvalidRows: 2,
+    });
+
+    await useScenarioStore.getState().loadFromCloud('account-a');
+
+    expect(useScenarioStore.getState().saved).toEqual([ownScenario]);
+    expect(useScenarioStore.getState().active.name).toBe('Gültiges Cloud-Szenario');
+    expect(useScenarioStore.getState().syncError).toBe(
+      '2 Cloud-Szenarien konnten wegen ungültiger Daten nicht geladen werden.',
+    );
+  });
+
+  it('reports an all-invalid cloud result without hiding the warning', async () => {
+    pullScenariosMock.mockResolvedValueOnce({
+      scenarios: [],
+      skippedInvalidRows: 1,
+    });
+
+    await useScenarioStore.getState().loadFromCloud('account-a');
+
+    expect(useScenarioStore.getState().saved).toEqual([]);
+    expect(useScenarioStore.getState().active.objekt.kaufpreis).toBe(300000);
+    expect(useScenarioStore.getState().syncError).toBe(
+      '1 Cloud-Szenario konnte wegen ungültiger Daten nicht geladen werden.',
+    );
   });
 
   it('ignores stale cloud responses from a previous account', async () => {
@@ -160,25 +196,55 @@ describe('scenarioStore', () => {
     accountAScenario.id = 'account-a-scenario';
     accountBScenario.id = 'account-b-scenario';
 
-    let resolveAccountA!: (scenarios: typeof accountAScenario[]) => void;
-    const accountALoad = new Promise<typeof accountAScenario[]>((resolve) => {
+    let resolveAccountA!: (result: Awaited<ReturnType<typeof pullScenarios>>) => void;
+    const accountALoad = new Promise<Awaited<ReturnType<typeof pullScenarios>>>((resolve) => {
       resolveAccountA = resolve;
     });
 
     pullScenariosMock
       .mockReturnValueOnce(accountALoad)
-      .mockResolvedValueOnce([accountBScenario]);
+      .mockResolvedValueOnce({ scenarios: [accountBScenario], skippedInvalidRows: 0 });
 
     const loadA = useScenarioStore.getState().loadFromCloud('account-a');
     const loadB = useScenarioStore.getState().loadFromCloud('account-b');
 
     await loadB;
-    resolveAccountA([accountAScenario]);
+    resolveAccountA({ scenarios: [accountAScenario], skippedInvalidRows: 0 });
     await loadA;
 
     expect(useScenarioStore.getState().ownerUserId).toBe('account-b');
     expect(useScenarioStore.getState().saved).toEqual([accountBScenario]);
     expect(useScenarioStore.getState().active.name).toBe('Account B');
+  });
+
+  it('ignores an older overlapping cloud response for the same account', async () => {
+    const olderScenario = createDefaultScenario({ name: 'Ältere Antwort' });
+    const newerScenario = createDefaultScenario({ name: 'Neuere Antwort' });
+    olderScenario.id = 'older-response';
+    newerScenario.id = 'newer-response';
+
+    let resolveOlder!: (result: Awaited<ReturnType<typeof pullScenarios>>) => void;
+    let resolveNewer!: (result: Awaited<ReturnType<typeof pullScenarios>>) => void;
+    const olderResponse = new Promise<Awaited<ReturnType<typeof pullScenarios>>>((resolve) => {
+      resolveOlder = resolve;
+    });
+    const newerResponse = new Promise<Awaited<ReturnType<typeof pullScenarios>>>((resolve) => {
+      resolveNewer = resolve;
+    });
+    pullScenariosMock
+      .mockReturnValueOnce(olderResponse)
+      .mockReturnValueOnce(newerResponse);
+
+    const olderLoad = useScenarioStore.getState().loadFromCloud('account-a');
+    const newerLoad = useScenarioStore.getState().loadFromCloud('account-a');
+
+    resolveNewer({ scenarios: [newerScenario], skippedInvalidRows: 0 });
+    await newerLoad;
+    resolveOlder({ scenarios: [olderScenario], skippedInvalidRows: 0 });
+    await olderLoad;
+
+    expect(useScenarioStore.getState().saved).toEqual([newerScenario]);
+    expect(useScenarioStore.getState().active.name).toBe('Neuere Antwort');
   });
 });
 

@@ -99,8 +99,8 @@ Allgemeine Arbeitsregeln:
 - Schreibe sauberen, testbaren Code mit klaren Schnittstellen. Rechenkern bleibt UI-frei und deterministisch.
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
-## Handover Naechster Thread (Stand: 2026-07-16)
-- Implementiert und lokal verifiziert: Stories 0 bis 13 sowie die nachtraeglichen Produkt-Erweiterungen inklusive versioniertem Agent-Draft, Agent Edit Mode, accountgebundener Browser-Agent-API und Remote-MCP mit Supabase-OAuth. `npm run lint`, `npm run typecheck`, `npm run test` und `npm run build` sind gruen (234/234 Tests).
+## Handover Naechster Thread (Stand: 2026-07-17)
+- Implementiert, lokal verifiziert und auf `main` veroeffentlicht: Stories 0 bis 13 sowie die nachtraeglichen Produkt-Erweiterungen inklusive versioniertem Agent-Draft, Agent Edit Mode, accountgebundener Browser-Agent-API und Remote-MCP mit Supabase-OAuth. Die Abschlussreview-Korrekturen fuer SQL-Migration, OAuth-Herkunftsmarker, Cloud-Sync und Szenarioformat 2 sind enthalten; `SQL_CHECKSUM.md` dokumentiert den fuer Staging vorgesehenen SQL-Stand. `npm run lint`, `npm run typecheck`, `npm run test` und `npm run build` sind gruen (246/246 Tests).
 - Offener Fokus: Keine offene Code-Story. Fuer den produktiven Remote-Betrieb bleiben SQL-Migration, OAuth-Server/Hook, kanonisches Metadata-Routing, Gateway-Rate-Limits und ein echter OAuth-/MCP-End-to-End-Test auszufuehren.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
@@ -117,11 +117,12 @@ Allgemeine Arbeitsregeln:
 - Solange Pflichtangaben oder Widersprueche offen sind, bleiben Kennzahlen sichtbar, aber deutlich als vorlaeufig markiert. Speichern, Speichern unter, Duplizieren und das Ueberschreiben eines gespeicherten Draft-Szenarios erfordern eine bewusste Bestaetigung.
 - Eine bewusst aktivierbare Browser-Tab-API bietet Agenten Lesezugriff auf eigene Szenarien und kann Drafts nur bereitstellen. Jede Methode prueft zur Laufzeit erneut, ob Login und `ownerUserId` noch zum beim Verbindungsaufbau gebundenen Konto gehoeren; kopierte API-Referenzen verlieren bei Account-Wechsel oder Abmeldung ihre Gueltigkeit.
 - Die Remote-MCP-Schicht verwendet denselben Supabase-Login wie die App: OAuth 2.1 mit PKCE fuehrt zum Immo-Checker-Freigabedialog, der das konkrete angemeldete Konto anzeigt. Erst nach ausdruecklicher Zustimmung wird der konkrete OAuth-Client fuer genau diesen Nutzer in `agent_oauth_grants` freigegeben; dies funktioniert mit DCR und vorregistrierten Clients.
-- Signatur, Ablauf, Aussteller, Audience, Nutzer-ID, Client-ID und der serverseitige MCP-Claim des JWT werden geprueft. RLS bindet jede Zeile an `auth.uid()` und verlangt weiterhin ein genehmigtes Profil sowie den aktuellen Nutzer-Client-Grant. `approved=false` oder Grant-Entzug sperren auch noch nicht abgelaufene Remote-Tokens; Account-Wechsel oder Abmeldung entwerten zusaetzlich die lokale Browser-Tab-API.
+- Signatur, Ablauf, Aussteller, Audience, Nutzer-ID, Client-ID und der serverseitige MCP-Claim des JWT werden geprueft. Der Token-Hook behaelt `client_id` auch ohne MCP-Grant als OAuth-Herkunftsmarker; Audience und MCP-Claim bleiben an Konfiguration, genehmigtes Profil und aktuellen Grant gebunden. RLS bindet jede Zeile an `auth.uid()` und verlangt weiterhin ein genehmigtes Profil sowie den aktuellen Nutzer-Client-Grant. `approved=false` oder Grant-Entzug sperren auch noch nicht abgelaufene Remote-Tokens; Account-Wechsel oder Abmeldung entwerten zusaetzlich die lokale Browser-Tab-API.
 - Die App verwaltet OAuth- und Immo-MCP-Grants gemeinsam unter `Agent-Verbindungen`. Beim Trennen wird zuerst der konto- und clientgebundene MCP-Grant geloescht und danach der OAuth-Grant widerrufen. Teilzustaende bleiben sichtbar, damit ein Reconnect erst nach bewusster Bereinigung und erneuter Zustimmung erfolgt.
 - Remote-Werkzeuge: eigene Szenarien/Drafts auflisten, ein eigenes Szenario oder einen Draft lesen, einen eigenen Draft anlegen, einen eigenen Draft per CAS aktualisieren und eine bereits beim Speichern erzeugte Analyse lesen. Es gibt kein Werkzeug zum finalen Erstellen/Aendern/Loeschen eines Szenarios, keine Adminwerkzeuge und keinen Service-Role-Key.
 - Supabase stellt aktuell nur technische Standard-Scopes bereit; die effektiven Datenrechte werden deshalb nicht aus angezeigten Scope-Namen abgeleitet, sondern durch OAuth-Client-Grant, JWT-Pruefung und RLS erzwungen.
 - Beim Speichern eines finalen Szenarios wird zusaetzlich ein Analyse-Snapshot fuer spaetere Agent-Auswertungen abgelegt. Fehlt die neue Datenbankspalte vor der Migration, faellt die Web-App kompatibel auf das bisherige Szenario-Speicherformat zurueck.
+- Beim Cloud-Pull bleiben gueltige Szenarien auch dann verfuegbar, wenn einzelne Zeilen den aktuellen Vertrag verletzen. Die Zahl ausgelassener Zeilen wird bis zur manuellen Bestaetigung als Warnung angezeigt; parallele Antworten desselben oder eines gewechselten Kontos duerfen neuere Daten nicht ueberschreiben.
 - Die MCP-Inbox wird nur nach bewusster Nutzeraktion geladen. Ein lokaler Agent-Draft oder der Agent Edit Mode loest keine unnoetige Remote-Abfrage aus.
 - Die RFC-9728-Metadatenadresse wird aus der MCP-Resource korrekt durch Einfuegen von `/.well-known/oauth-protected-resource` zwischen Origin und Resource-Pfad gebildet. Da der nackte Supabase-Functions-Pfad diese Root-Route nicht automatisch bereitstellt, muss Produktion beide Pfade ueber ein Gateway oder einen Reverse Proxy kontrolliert auf dieselbe Function routen.
 
@@ -141,6 +142,28 @@ deno fmt --check supabase/functions/agent-mcp/index.ts
 ```
 
 Ergebnis dieses manuellen Runs: App-Lint, Typecheck, 234/234 Tests und Build sind gruen; Agent-Feldparitaet ist statisch 61/61/61, der Edge-Code besteht den lokalen TypeScript-Syntaxcheck und `git diff --check` ist gruen. Ein vollstaendiger Deno-Check ist mangels verfuegbarer Deno-Laufzeit nicht wiederholbar. SQL-Migration, Live-Deployment, Aktivierung des Supabase-OAuth-Servers/Hooks, Gateway-Rate-Limits und der echte OAuth-/MCP-End-to-End-Test bleiben umgebungsgebundene Deploymentschritte.
+
+## Abschlussreview-Korrekturen (Stand: 2026-07-16)
+
+- Die Migration verwendet in sicherheitskritischen Funktionen nicht mehr das reservierte PostgreSQL-Schluesselwort `grant` als Tabellenalias. Ein frueherer, unbenutzter generischer JSON-Helper wird idempotent entfernt; der formatspezifische Draft-Validator bleibt aktiv.
+- Wenn Supabase `client_id` nur als Hook-Event-Feld liefert, wird sie vor allen Rueckgaben auch in die Exception-Basis uebernommen. Dadurch bleibt jedes OAuth-Token von einer direkten Web-Session unterscheidbar, waehrend `aud` und `immo_checker_mcp` weiterhin nur mit aktivem, konto- und clientgebundenem Grant gesetzt werden.
+- Cloud-Synchronisation liefert gueltige Teilresultate plus Anzahl invalider Zeilen. Ausgelassene Zeilen und fatale Pull-Fehler sind als persistente, schliessbare Warnung sichtbar; eine Request-ID verhindert, dass eine aeltere parallele Antwort neuere Kontodaten ueberschreibt.
+- Das Szenarioformat ist Version 2. Version-1-Daten werden explizit migriert; partielle Zwischenformen mit nur einem neuen Verkaufsnebenkostenfeld werden abgewiesen. Version-2-Daten muessen alle historisch migrierten Pflichtfelder enthalten. Exporte validieren und normalisieren alle enthaltenen Szenarien auf Version 2; Wrapper und Zeilen muessen dieselbe Version tragen, zukuenftige Versionen werden fail-closed abgewiesen.
+- Der einmal gemeldete Testflake blieb in 18 zusaetzlichen Gesamtsuiten sowie im finalen Lauf nicht reproduzierbar. Statt eines spekulativen Produktfixes wurde der konkrete externe React-Testaufruf korrekt synchronisiert; zukuenftige Fehlschlaege sollen mit verbose Log, Testname und Seed gesichert werden.
+
+Verify:
+```bash
+cd app
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+
+cd ..
+git diff --check
+```
+
+Ergebnis: gezielte Regressionstests 79/79, Gesamtsuite 246/246 in 29 Testdateien, Lint, Typecheck, Build und Whitespace-Check gruen. Eine vollstaendige Ausfuehrung von `supabase-agent-mcp.sql` bleibt mangels lokaler PostgreSQL-/Supabase-Laufzeit Teil der Live-Deployment-Verifikation.
 
 ## Nachtraegliche Fachreview-Korrekturen (Stand: 2026-07-15)
 
@@ -169,7 +192,7 @@ Ergebnis: Gesamtsuite 178/178 gruen; Lint, Typecheck und Build gruen; UI-Verifik
 - Der volle Betrag ist im Massnahmenjahr ein unfinanzierter Cash-Abfluss. Werbungskosten und zusaetzliche AfA werden getrennt in das Ergebnis aus Vermietung und Verpachtung eingerechnet. Aktivierte und bis zum Exit ausgefuehrte Kosten werden fuer den Spekulationsgewinn als Herstellungskosten beruecksichtigt.
 - Das Projektjahr gilt vereinfachend als Zahlungs- und Abschlussjahr; Abschreibungen starten mit einem vollen Jahresbetrag. Die App warnt vor der taggenauen Drei-Jahres-/15-%-Pruefung und den Abstimmungs-/Bescheinigungsvoraussetzungen fuer Denkmalfaelle, klassifiziert diese aber nicht automatisch.
 - Sanierungen erhoehen weder Objektwert noch Miete automatisch. Markierte Modernisierungen erzeugen im Mietbereich einen Hinweis `nach Abschluss in Jahr X ggf. moeglich`; eine angenommene Erhoehung muss weiterhin ueber eine Mietsteigerungsregel eingetragen werden.
-- Cashflow-Chart, ausgewaehltes Jahresdetail und CSV-Export weisen Sanierungsauszahlungen beziehungsweise ihre Steuerkomponenten aus. Alte Schema-v1-Szenarien ohne `sanierungen` werden additiv mit einer leeren Liste geladen; Supabase benoetigt wegen JSONB keine SQL-Migration.
+- Cashflow-Chart, ausgewaehltes Jahresdetail und CSV-Export weisen Sanierungsauszahlungen beziehungsweise ihre Steuerkomponenten aus. Alte Szenarien der Version 1 ohne `sanierungen` werden additiv mit einer leeren Liste geladen und auf Version 2 migriert; Supabase benoetigt wegen JSONB keine SQL-Migration.
 
 Verify:
 ```bash
@@ -258,7 +281,7 @@ Ergebnis: Zieltests 4/4 gruen; Gesamtsuite 157/157 gruen; Lint, Typecheck und Bu
 - Unter jeder Mietsteigerungsregel steht der mit derselben Zeitreihenlogik berechnete Mietstand in ihrem Startjahr, jeweils pro m2/Monat und gesamt/Monat. Dabei werden alle bis dahin wirksamen Regeln kombiniert; gleichjaehrige Regeln zeigen denselben Jahreswert.
 - Regeln ausserhalb der Haltedauer werden weiter bis zu ihrem Startjahr berechnet, aber als nicht im Diagramm enthalten markiert. Bei doppelten Jahresraten im selben Startjahr wird die nach bestehender Zeitreihensemantik nicht wirksame spaetere Rate gekennzeichnet.
 - Der Mietspiegel wird nicht automatisch fortgeschrieben. Die Visualisierung ist nur eine rechnerische Orientierung und keine rechtliche Pruefung einer Mieterhoehung.
-- Bestehende Szenarien der Schema-Version 1 bleiben kompatibel: fehlende Notizen werden als leerer Text und fehlende Mietspiegelwerte als 0 migriert. Es ist keine SQL-Migration erforderlich, da Supabase das Szenario als JSONB speichert.
+- Bestehende Szenarien der Version 1 bleiben kompatibel: fehlende Notizen werden als leerer Text und fehlende Mietspiegelwerte als 0 migriert, anschliessend gilt Version 2. Es ist keine SQL-Migration erforderlich, da Supabase das Szenario als JSONB speichert.
 
 Verify:
 ```bash

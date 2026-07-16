@@ -161,6 +161,19 @@ describe('Dashboard-Jahresauswahl', () => {
     expect(taxFreeBadge.closest('td')).toHaveTextContent('11');
     expect(taxFreeBadge.closest('td')).not.toHaveTextContent('10(Modell: steuerfrei)');
   });
+
+  it('zeigt einen Cloud-Sync-Fehler als schließbare Warnung', () => {
+    const message = '1 Cloud-Szenario konnte wegen ungültiger Daten nicht geladen werden.';
+    useScenarioStore.setState({ syncError: message });
+
+    render(<App />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent(message);
+    fireEvent.click(screen.getByRole('button', { name: 'Hinweis schließen' }));
+
+    expect(useScenarioStore.getState().syncError).toBeNull();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });
 
 describe('AfA-Satz-Ableitung aus dem Baujahr', () => {

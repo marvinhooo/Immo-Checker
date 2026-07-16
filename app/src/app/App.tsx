@@ -332,6 +332,7 @@ export function App() {
   const loadSaved = useScenarioStore((s) => s.loadSaved);
   const scenarioOwnerUserId = useScenarioStore((s) => s.ownerUserId);
   const isSyncing = useScenarioStore((s) => s.isSyncing);
+  const syncError = useScenarioStore((s) => s.syncError);
   const loadFromCloud = useScenarioStore((s) => s.loadFromCloud);
 
   const user = useAuthStore((s) => s.user);
@@ -949,6 +950,9 @@ export function App() {
   };
 
   const dismissSaveToast = useCallback(() => setSaveToast(null), []);
+  const dismissSyncError = useCallback(() => {
+    useScenarioStore.setState({ syncError: null });
+  }, []);
 
   const requestConfirm = (options: {
     title: string;
@@ -1419,9 +1423,16 @@ export function App() {
         />
       )}
 
-      {saveToast && (
+      {saveToast ? (
         <Toast message={saveToast} onDismiss={dismissSaveToast} />
-      )}
+      ) : syncError ? (
+        <Toast
+          message={syncError}
+          onDismiss={dismissSyncError}
+          durationMs={null}
+          tone="warning"
+        />
+      ) : null}
 
       {/* Main Grid */}
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8 space-y-6">

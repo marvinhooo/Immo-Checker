@@ -37,15 +37,40 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+-- OAuth-Tokens duerfen niemals Admin-Rechte oder SECURITY-DEFINER-Admin-RPCs
+-- erben. Die Definition steht absichtlich vor is_admin().
+CREATE OR REPLACE FUNCTION public.is_direct_web_session()
+RETURNS BOOLEAN AS $$
+  SELECT auth.uid() IS NOT NULL
+    AND NULLIF(auth.jwt() ->> 'client_id', '') IS NULL
+    AND COALESCE(auth.jwt() -> 'immo_checker_mcp', 'false'::jsonb) <> 'true'::jsonb;
+$$ LANGUAGE sql STABLE SET search_path = public, auth, pg_temp;
+
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN AS $$
-  SELECT EXISTS (
+  SELECT public.is_direct_web_session()
+    AND EXISTS (
     SELECT 1
     FROM public.profiles profile
     WHERE profile.id = auth.uid()
       AND profile.is_admin = true
   );
-$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public;
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public, auth, pg_temp;
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users read own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Admins read all profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Admins update profiles" ON public.profiles;
+
+CREATE POLICY "Users read own profile" ON public.profiles
+  FOR SELECT USING (auth.uid() = id AND public.is_direct_web_session());
+
+CREATE POLICY "Admins read all profiles" ON public.profiles
+  FOR SELECT USING (public.is_admin());
+
+CREATE POLICY "Admins update profiles" ON public.profiles
+  FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());
 
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 

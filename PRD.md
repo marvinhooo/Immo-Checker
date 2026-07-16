@@ -16,12 +16,19 @@
 - CoC = Cash-on-Cash-Rendite (Netto-Cashflow / eingesetztes Eigenkapital)
 - RLS = Row Level Security (datenbankseitige Zeilenrechte in Supabase/Postgres)
 - RPC = Remote Procedure Call (hier: aufrufbare Supabase-Datenbankfunktion)
-- Spekulationsfrist = 10-Jahres-Frist, nach der ein privater Immobilienverkaufsgewinn steuerfrei ist (§23 EStG)
+- MCP = Model Context Protocol (standardisierte Werkzeug-Schnittstelle fuer Agenten)
+- OAuth = Open Authorization (standardisierte, nutzerbestaetigte Zugriffsfreigabe)
+- PKCE = Proof Key for Code Exchange (Schutz des OAuth-Autorisierungscodes)
+- JWT = JSON Web Token (signiertes Zugriffstoken mit Nutzer- und Client-Bindung)
+- DCR = Dynamic Client Registration (automatische Registrierung eines MCP-Clients)
+- CAS = Compare-and-Swap (Update nur auf Basis der zuletzt gelesenen Revision)
+- Protected Resource Metadata = oeffentliches OAuth-Metadatendokument einer geschuetzten API
+- Spekulationsfrist = Zeitraum von nicht mehr als zehn Jahren nach §23 EStG; im Jahresraster ist Jahr 10 noch innerhalb der Frist und der Exit ab Jahr 11 steuerfrei modelliert
 - Grenzsteuersatz = Steuersatz auf den naechsten verdienten Euro (entscheidet ueber den Steuervorteil)
 
 ## Zielbild
 - Eine schnelle, lokal laufende React-Web-App, mit der ein privater Kapitalanleger eine konkrete Immobilie (v. a. ETW/Mehrfamilienhaus, Bestand & Denkmal) ueber die gesamte Haltedauer durchrechnet: Finanzierung, Miete, laufende Kosten, AfA/Steuervorteile, Wertsteigerung und Verkauf - inkl. Cashflow- und Vermoegensprojektion und belastbaren Rendite-Kennzahlen (IRR, ROE, Netto-Mietrendite).
-- Technische Leitplanken: 100 % Client-seitige Berechnung (kein Backend, keine Anmeldung), Rechenkern als reine, unit-getestete TypeScript-Module getrennt von der UI; Persistenz der Szenarien im Browser (localStorage) + Export/Import. Modernes, cleanes, frisches Design (React + Vite + TypeScript + TailwindCSS + Recharts).
+- Technische Leitplanken: 100 % client-seitige Berechnung; der Rechenkern bleibt als reine, unit-getestete TypeScript-Module von der UI getrennt. Lokale Nutzung und Export/Import bleiben moeglich; Anmeldung, Cloud-Synchronisation und die optionale Agent-/MCP-Anbindung nutzen Supabase, ohne Berechnungen in das Backend zu verlagern. Modernes, cleanes, frisches Design (React + Vite + TypeScript + TailwindCSS + Recharts).
 - Betriebsmodus: Free-Tier-tauglich, offline lauffaehig, deterministische Berechnung (gleiche Eingaben -> gleiche Ergebnisse). Deutsche Lokalisierung (EUR, %, dt. Zahlenformat).
 
 ========================================
@@ -67,7 +74,7 @@ Diese Werte sind Default-Annahmen und MUESSEN in der UI konfigurierbar/ueberschr
 - Optionale Zuschlaege: Solidaritaetszuschlag (5,5 % auf ESt oberhalb Freigrenze - fuer die meisten 0) und Kirchensteuer (8-9 %), per Toggle.
 
 ### Verkauf / Exit
-- Spekulationssteuer (§23 EStG): Verkauf innerhalb 10 Jahre -> Gewinn (Verkaufspreis - Verkaufsnebenkosten - Vorfaelligkeitsentschaedigung - Kaufpreis - KNK - nachtraegliche Herstellungskosten + bereits genutzte AfA) mit persoenlichem Steuersatz versteuern, sofern der modellierte private Veraeusserungsgewinn mindestens 1.000 EUR erreicht; nach 10 Jahren steuerfrei.
+- Spekulationssteuer (§23 EStG): Verkauf bei einem Zeitraum von nicht mehr als zehn Jahren -> Gewinn (Verkaufspreis - Verkaufsnebenkosten - Vorfaelligkeitsentschaedigung - Kaufpreis - KNK - nachtraegliche Herstellungskosten + bereits genutzte AfA) mit persoenlichem Steuersatz versteuern, sofern der modellierte private Veraeusserungsgewinn mindestens 1.000 EUR erreicht; im Jahresraster ab Exit-Jahr 11 steuerfrei.
 - Verkaufsnebenkosten (Makler, ggf. Vorfaelligkeitsentschaedigung bei vorzeitiger Abloesung) abziehen; Restschuld tilgen -> Netto-Verkaufserloes.
 
 ### Kennzahlen, die ein "lohnt sich?"-Urteil ermoeglichen
@@ -92,13 +99,48 @@ Allgemeine Arbeitsregeln:
 - Schreibe sauberen, testbaren Code mit klaren Schnittstellen. Rechenkern bleibt UI-frei und deterministisch.
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
-## Handover Naechster Thread (Stand: 2026-07-15)
-- Implementiert und verifiziert: Stories 0 bis 13 plus nachtraegliche Supabase-Auth/Admin-, Mietspiegel-/Notizen-/Visualisierungs-, PWA-Update-, dezentrale Speicher-UX-, Dashboard-Jahresauswahl-, Sanierungsplanungs- und Fachreview-Korrektur-Erweiterung. Die Darstellung des nicht sofort abziehbaren Instandhaltungsanteils nennt WEG-Ruecklage und kalkulatorische Reserve ausdruecklich. `npm run lint && npm run typecheck && npm run build && npm run test` alle gruen (179/179 Tests).
-- Offener Fokus: Keine offenen Stories.
+## Handover Naechster Thread (Stand: 2026-07-16)
+- Implementiert und lokal verifiziert: Stories 0 bis 13 sowie die nachtraeglichen Produkt-Erweiterungen inklusive versioniertem Agent-Draft, Agent Edit Mode, accountgebundener Browser-Agent-API und Remote-MCP mit Supabase-OAuth. `npm run lint`, `npm run typecheck`, `npm run test` und `npm run build` sind gruen (234/234 Tests).
+- Offener Fokus: Keine offene Code-Story. Fuer den produktiven Remote-Betrieb bleiben SQL-Migration, OAuth-Server/Hook, kanonisches Metadata-Routing, Gateway-Rate-Limits und ein echter OAuth-/MCP-End-to-End-Test auszufuehren.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
-  2. Naechster sinnvoller Fokus ist gezielter UX-/Fachreview mit realen Objektbeispielen.
+  2. Bei Deployment-Auftrag mit `supabase/functions/agent-mcp/README.md` beginnen und erst nach erfolgreichem Live-Isolationstest aktiv schalten.
 - Verify-Setup: `cd app && npm run lint && npm run typecheck && npm run build && npm run test`.
+
+## Nachtraegliche Agenten-Anbindung (Stand: 2026-07-16)
+
+- Ein versionierter Agent-Draft-Vertrag erlaubt Agenten, aus PDF-, Webseiten-, API- oder Textquellen nur freigegebene Szenariofelder vorzubelegen. Jede gesetzte Angabe kann Quelle, Fundstelle, kurze Evidenz, Herkunft und Konfidenz tragen; IDs, Schema-Versionen und berechnete Ergebnisse sind nicht schreibbar.
+- Die App oder Edge Function ruft keine beliebigen, vom Agenten genannten URLs ab. PDF/Web-Auswertung geschieht beim verbundenen Agenten; die App nimmt anschliessend ausschliesslich den strukturierten Draft entgegen. Dadurch entstehen weder ein allgemeiner Crawler noch ein SSRF-Pfad (Server-Side Request Forgery, serverseitiger Abruf fremder Ziele).
+- Ein importierter oder ueber MCP erstellter Draft ist immer nur ein sicherer Zwischenstand. Er ersetzt das sichtbare Szenario erst nach einer ausdruecklichen Rueckfrage und wird nie automatisch als finales Szenario gespeichert.
+- Der Agent Edit Mode kennzeichnet fehlende und unsichere Pflichtangaben sanft pulsierend, Widersprueche statisch, zeigt Evidenz und Warnungen, springt zum naechsten offenen Eingabefeld und passt bedingte Pflichtfelder an Moduswechsel an. Bei reduzierter Bewegung werden Animationen deaktiviert.
+- Im Bodenrichtwertmodus sind Grundstücksfläche sowie beide MEA-Werte (Miteigentumsanteil: Ihr Anteil / Objekt gesamt) bedingte Pflichtangaben. Beim Exit sind Modus und der jeweils aktive Prozent- oder Pauschalwert Pflichtangaben. Partielle Agent-Drafts bleiben dadurch sichtbar prüfbar, ohne stille fachliche Defaults als bestätigt auszugeben.
+- Solange Pflichtangaben oder Widersprueche offen sind, bleiben Kennzahlen sichtbar, aber deutlich als vorlaeufig markiert. Speichern, Speichern unter, Duplizieren und das Ueberschreiben eines gespeicherten Draft-Szenarios erfordern eine bewusste Bestaetigung.
+- Eine bewusst aktivierbare Browser-Tab-API bietet Agenten Lesezugriff auf eigene Szenarien und kann Drafts nur bereitstellen. Jede Methode prueft zur Laufzeit erneut, ob Login und `ownerUserId` noch zum beim Verbindungsaufbau gebundenen Konto gehoeren; kopierte API-Referenzen verlieren bei Account-Wechsel oder Abmeldung ihre Gueltigkeit.
+- Die Remote-MCP-Schicht verwendet denselben Supabase-Login wie die App: OAuth 2.1 mit PKCE fuehrt zum Immo-Checker-Freigabedialog, der das konkrete angemeldete Konto anzeigt. Erst nach ausdruecklicher Zustimmung wird der konkrete OAuth-Client fuer genau diesen Nutzer in `agent_oauth_grants` freigegeben; dies funktioniert mit DCR und vorregistrierten Clients.
+- Signatur, Ablauf, Aussteller, Audience, Nutzer-ID, Client-ID und der serverseitige MCP-Claim des JWT werden geprueft. RLS bindet jede Zeile an `auth.uid()` und verlangt weiterhin ein genehmigtes Profil sowie den aktuellen Nutzer-Client-Grant. `approved=false` oder Grant-Entzug sperren auch noch nicht abgelaufene Remote-Tokens; Account-Wechsel oder Abmeldung entwerten zusaetzlich die lokale Browser-Tab-API.
+- Die App verwaltet OAuth- und Immo-MCP-Grants gemeinsam unter `Agent-Verbindungen`. Beim Trennen wird zuerst der konto- und clientgebundene MCP-Grant geloescht und danach der OAuth-Grant widerrufen. Teilzustaende bleiben sichtbar, damit ein Reconnect erst nach bewusster Bereinigung und erneuter Zustimmung erfolgt.
+- Remote-Werkzeuge: eigene Szenarien/Drafts auflisten, ein eigenes Szenario oder einen Draft lesen, einen eigenen Draft anlegen, einen eigenen Draft per CAS aktualisieren und eine bereits beim Speichern erzeugte Analyse lesen. Es gibt kein Werkzeug zum finalen Erstellen/Aendern/Loeschen eines Szenarios, keine Adminwerkzeuge und keinen Service-Role-Key.
+- Supabase stellt aktuell nur technische Standard-Scopes bereit; die effektiven Datenrechte werden deshalb nicht aus angezeigten Scope-Namen abgeleitet, sondern durch OAuth-Client-Grant, JWT-Pruefung und RLS erzwungen.
+- Beim Speichern eines finalen Szenarios wird zusaetzlich ein Analyse-Snapshot fuer spaetere Agent-Auswertungen abgelegt. Fehlt die neue Datenbankspalte vor der Migration, faellt die Web-App kompatibel auf das bisherige Szenario-Speicherformat zurueck.
+- Die MCP-Inbox wird nur nach bewusster Nutzeraktion geladen. Ein lokaler Agent-Draft oder der Agent Edit Mode loest keine unnoetige Remote-Abfrage aus.
+- Die RFC-9728-Metadatenadresse wird aus der MCP-Resource korrekt durch Einfuegen von `/.well-known/oauth-protected-resource` zwischen Origin und Resource-Pfad gebildet. Da der nackte Supabase-Functions-Pfad diese Root-Route nicht automatisch bereitstellt, muss Produktion beide Pfade ueber ein Gateway oder einen Reverse Proxy kontrolliert auf dieselbe Function routen.
+
+Verify:
+```bash
+cd app
+npx vitest run src/agent/draft.test.ts src/app/AgentFlow.test.tsx src/components/agent/AgentDraftDialog.test.tsx src/components/agent/AgentReviewPanel.test.tsx src/components/auth/OAuthConsent.test.tsx src/components/auth/AuthGate.oauth.test.tsx src/lib/sync.agent.test.ts
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+
+cd ..
+deno check supabase/functions/agent-mcp/index.ts
+deno lint supabase/functions/agent-mcp/index.ts
+deno fmt --check supabase/functions/agent-mcp/index.ts
+```
+
+Ergebnis dieses manuellen Runs: App-Lint, Typecheck, 234/234 Tests und Build sind gruen; Agent-Feldparitaet ist statisch 61/61/61, der Edge-Code besteht den lokalen TypeScript-Syntaxcheck und `git diff --check` ist gruen. Ein vollstaendiger Deno-Check ist mangels verfuegbarer Deno-Laufzeit nicht wiederholbar. SQL-Migration, Live-Deployment, Aktivierung des Supabase-OAuth-Servers/Hooks, Gateway-Rate-Limits und der echte OAuth-/MCP-End-to-End-Test bleiben umgebungsgebundene Deploymentschritte.
 
 ## Nachtraegliche Fachreview-Korrekturen (Stand: 2026-07-15)
 
@@ -286,7 +328,7 @@ Prioritaet: Hoch | Status: DONE (2026-06-20)
 
 Anforderungen:
 - Vollstaendiges Eingabe-Datenmodell als TypeScript-Typen in `src/engine/types.ts`. Mindestens:
-  - Objekt: Kaufpreis, Wohnflaeche m2, Baujahr/Fertigstellungsjahr, Bundesland, Objekttyp (Bestand/Neubau/Denkmal), Bodenwertanteil % oder Bodenrichtwert EUR/m2 Wohnflaeche, Sanierungskosten (Denkmal-Topf).
+  - Objekt: Kaufpreis, Wohnflaeche m2, Baujahr/Fertigstellungsjahr, Bundesland, Objekttyp (Bestand/Neubau/Denkmal), Bodenwertanteil % oder Bodenrichtwert EUR/m2 mit Grundstücksflaeche und MEA (Miteigentumsanteil), Sanierungskosten (Denkmal-Topf).
   - Kaufnebenkosten: GrESt % (aus Bundesland vorbelegt, editierbar), Notar/Grundbuch %, Makler %, Flag "KNK fremdfinanzieren" (Default: nein) und optionaler fremdfinanzierter KNK-Anteil %.
   - Finanzierung: Eigenkapital (% ODER absolut, umschaltbar) fuer Kaufpreis + Sanierungskosten ohne KNK, Darlehensbetrag (abgeleitet), Sollzins %, anfaengliche Tilgung %, Zinsbindung (Jahre), Anschlusszins % (nach Zinsbindung), jaehrliche Sondertilgung (Betrag oder %), optional Disagio.
   - Miete: Kaltmiete (EUR/Monat oder EUR/m2), Leerstand/Mietausfallwagnis %, Mietsteigerungs-Szenario (flexible Zeitreihe, s. Story 3).
@@ -294,7 +336,7 @@ Anforderungen:
   - Steuer: Eingabemodus (Bruttojahresgehalt zvE ODER fester Grenzsteuersatz %), Veranlagung (Single/Splitting), Soli-Toggle, Kirchensteuer % (Toggle).
   - AfA: AfA-Modus (linear nach Baujahr / degressiv 5 % / Sonder-AfA §7b / Denkmal §7i), Gebaeude-AfA-Satz (abgeleitet, editierbar).
   - Wertentwicklung: Wertsteigerungs-Szenario (flexible Zeitreihe, s. Story 3).
-  - Exit: Haltedauer (Jahre), Verkaufsnebenkosten %, optional vorzeitiger Verkauf vor Ablauf Zinsbindung (Vorfaelligkeit %).
+  - Exit: Haltedauer (Jahre), Verkaufsnebenkosten wahlweise in % oder als EUR-Pauschale, optional vorzeitiger Verkauf vor Ablauf Zinsbindung (Vorfaelligkeit %).
 - Realistisches Default-Szenario (z. B. 300.000 EUR ETW), das sofort sinnvolle Ergebnisse liefert.
 - Zustand-Store (`src/store/scenarioStore.ts`) mit Aktionen zum Setzen/Reset; abgeleitete Felder (Darlehensbetrag, EUR<->% Umrechnung) zentral.
 - Persistenz: aktives Szenario + benannte Szenarien in localStorage (Versionsfeld fuer spaetere Migration).
@@ -430,7 +472,7 @@ Prioritaet: Hoch | Status: DONE (2026-06-20)
 
 Anforderungen:
 - Exit-Berechnung in `src/engine/exit.ts`: Verkaufspreis (= projizierter Wert im Exit-Jahr), abzgl. Verkaufsnebenkosten, abzgl. Restschuld (+ ggf. Vorfaelligkeit) = Netto-Verkaufserloes.
-- Spekulationssteuer (§23 EStG): wenn Haltedauer < 10 Jahre und Gewinn >= 1.000 EUR, Gewinn = Verkaufspreis - Verkaufsnebenkosten - Vorfaelligkeitsentschaedigung - Anschaffungs-/Herstellungskosten + kumulierte AfA, versteuert mit Grenzsteuersatz bzw. Tarifdelta; sonst 0.
+- Spekulationssteuer (§23 EStG): wenn Haltedauer im Jahresraster <= 10 Jahre und Gewinn >= 1.000 EUR, Gewinn = Verkaufspreis - Verkaufsnebenkosten - Vorfaelligkeitsentschaedigung - Anschaffungs-/Herstellungskosten + kumulierte AfA, versteuert mit Grenzsteuersatz bzw. Tarifdelta; ab Exit-Jahr 11 sonst 0.
 - Kennzahlen-Modul `src/engine/metrics.ts`:
   - Bruttomietrendite, Nettomietrendite, Kaufpreisfaktor.
   - Cash-on-Cash-Rendite (Jahr 1 und Durchschnitt), ROE.
@@ -440,7 +482,7 @@ Anforderungen:
 
 When complete:
 - IRR-Solver verifiziert gegen bekannte Cashflow-Reihe (z. B. analytisch loesbarer Fall, Toleranz < 0,01 %).
-- Spekulationssteuer schaltet bei Haltedauer >= 10 J. auf 0; bei < 10 J. und Gewinn >= 1.000 EUR > 0 (Test).
+- Spekulationssteuer ist bei Haltedauer 10 J. und Gewinn >= 1.000 EUR noch > 0; ab Exit-Jahr 11 ist sie 0 (Test).
 - Alle Kennzahlen am Referenz-Szenario plausibel.
 - Output: `<promise>COMPLETE</promise>`
 
@@ -601,21 +643,21 @@ Kontext: Story 6 berechnet EINEN gewaehlten Exit. Story 13 beantwortet explizit 
 Anforderungen:
 - Funktion `analyzeHoldingPeriods(scenario)` in `src/engine/holding.ts`, die fuer jedes Jahr `t = 1..N` einen Exit-an-diesem-Jahr durchrechnet und je `t` liefert:
   - **Netto-Verkaufserloes(t)** = projizierter Immobilienwert(t) - Verkaufsnebenkosten - Restschuld(t) - ggf. Vorfaelligkeit.
-  - **Spekulationssteuer(t)** nach §23 EStG: bei `t < 10` Jahren und Gewinn >= 1.000 EUR Gewinn (Verkaufspreis - Verkaufsnebenkosten - Vorfaelligkeit - Anschaffungs-/Herstellungskosten + kumulierte AfA bis t) * Grenzsteuersatz bzw. Tarifdelta; ab `t >= 10` = 0 (steuerfrei).
+  - **Spekulationssteuer(t)** nach §23 EStG: im Jahresraster bei `t <= 10` und Gewinn >= 1.000 EUR Gewinn (Verkaufspreis - Verkaufsnebenkosten - Vorfaelligkeit - Anschaffungs-/Herstellungskosten + kumulierte AfA bis t) * Grenzsteuersatz bzw. Tarifdelta; ab `t >= 11` = 0 (steuerfrei).
   - **Kumulierter Cashflow nach Steuer(t)** = Summe der jaehrlichen Cashflows nach Steuer von Jahr 1..t (kann negativ sein und MUSS in den Gewinn einfliessen).
   - **Gesamtgewinn(t)** = kumulierter Cashflow nach Steuer(t) + Netto-Verkaufserloes(t) - Spekulationssteuer(t) - eingesetztes Eigenkapital(t0).
   - **EK-Profitabilitaet insgesamt(t)** = Gesamtgewinn(t) / eingesetztes Eigenkapital (Gesamt-Multiple bzw. Gesamtrendite ueber die Haltedauer).
   - **EK-Profitabilitaet p. a.(t)** = annualisierte Rendite: IRR der EK-Cashflows (-EK in t0, jaehrliche Cashflows nach Steuer, + Netto-Verkaufserloes - Spekulationssteuer in t) sowie alternativ CAGR auf Basis Gesamt-Multiple; beide ausweisen.
   - Zusatzspalten: Restschuld(t), Immobilienwert(t), enthaltene Spekulationssteuer ja/nein, Break-even-Jahr (erstes `t` mit Gesamtgewinn >= 0).
-- Ableitung "lohnt sich?"-Hilfen: bestes Exit-Jahr nach IRR; Markierung des 10-Jahres-Punkts (Steuerfreiheit); Vergleich der p.-a.-Rendite gegen eine eingegebene Zielrendite (Ampel).
-- UI-Anbindung: Tabelle "Verkauf nach Jahr X" + Chart (Gesamtgewinn und IRR ueber das Exit-Jahr), Hervorhebung des 10-Jahres-Schwellenwerts. (Nutzt Story 9-Bausteine.)
+- Ableitung "lohnt sich?"-Hilfen: bestes Exit-Jahr nach IRR; Markierung der Steuerfreiheit ab Exit-Jahr 11; Vergleich der p.-a.-Rendite gegen eine eingegebene Zielrendite (Ampel).
+- UI-Anbindung: Tabelle "Verkauf nach Jahr X" + Chart (Gesamtgewinn und IRR ueber das Exit-Jahr), Hervorhebung der Schwelle ab Jahr 11. (Nutzt Story 9-Bausteine.)
 
 When complete:
 - `analyzeHoldingPeriods` liefert fuer alle `t = 1..N` konsistente Werte; Summen-/Identitaetscheck: Exit im gewaehlten Haltejahr stimmt mit Story 6 ueberein (Toleranz < 1 EUR).
 - Negativer kumulierter Cashflow wird nachweislich vom Verkaufserloes abgezogen (Test mit unterdecktem Szenario).
-- Spekulationssteuer ist bei `t = 9` mit Gewinn >= 1.000 EUR > 0 und bei `t = 10` = 0 (Test).
+- Spekulationssteuer ist bei `t = 10` mit Gewinn >= 1.000 EUR > 0 und ab `t = 11` = 0 (Test).
 - EK-Profitabilitaet wird p. a. (IRR + CAGR) UND insgesamt (Multiple) ausgewiesen; Referenzfall plausibel.
-- UI zeigt Exit-Jahr-Tabelle + Chart, inkl. 10-Jahres-Markierung und bestem Exit-Jahr.
+- UI zeigt Exit-Jahr-Tabelle + Chart, inkl. Markierung der Steuerfreiheit ab Jahr 11 und bestem Exit-Jahr.
 - Output: `<promise>COMPLETE</promise>`
 
 Verify:

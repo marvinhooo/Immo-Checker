@@ -37,6 +37,9 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
       bodenwertMode: 'perSqm',
       bodenwertAnteilPct: ((bodenrichtwertProSqm * wohnflaeche) / kaufpreis) * 100,
       bodenrichtwertProSqm,
+      grundstuecksflaeche: 0,
+      miteigentumsanteilZaehler: 1,
+      miteigentumsanteilNenner: 1,
       sanierungskosten: 0,
     },
     knk: {
@@ -102,7 +105,9 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
     },
     exit: {
       haltedauerJahre: 15,
+      verkaufsnebenkostenMode: 'percent',
       verkaufsnebenkostenPct: 3,
+      verkaufsnebenkostenAbsolut: 2500,
       vorfaelligkeitPct: 0,
     },
   };

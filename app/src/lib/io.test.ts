@@ -347,6 +347,58 @@ describe('io', () => {
     expect(imported.finanzierung.anschlussTilgungPct).toBeNull();
   });
 
+  it('should backfill plot share and absolute exit-cost fields in old scenarios', () => {
+    const parsed = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    const objekt = parsed.objekt as Record<string, unknown>;
+    const exit = parsed.exit as Record<string, unknown>;
+    delete objekt.grundstuecksflaeche;
+    delete objekt.miteigentumsanteilZaehler;
+    delete objekt.miteigentumsanteilNenner;
+    delete exit.verkaufsnebenkostenMode;
+    delete exit.verkaufsnebenkostenAbsolut;
+
+    const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
+
+    expect(imported.objekt.grundstuecksflaeche).toBe(0);
+    expect(imported.objekt.miteigentumsanteilZaehler).toBe(1);
+    expect(imported.objekt.miteigentumsanteilNenner).toBe(1);
+    expect(imported.exit.verkaufsnebenkostenMode).toBe('percent');
+    expect(imported.exit.verkaufsnebenkostenAbsolut).toBe(2500);
+  });
+
+  it('should reject impossible plot shares', () => {
+    const parsed = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    const objekt = parsed.objekt as Record<string, unknown>;
+    objekt.miteigentumsanteilZaehler = 1001;
+    objekt.miteigentumsanteilNenner = 1000;
+
+    expect(() => importScenarios(JSON.stringify(parsed))).toThrow(
+      'miteigentumsanteilZaehler darf miteigentumsanteilNenner nicht überschreiten.'
+    );
+  });
+
+  it('should reject a partial plot-share payload instead of assuming sole ownership', () => {
+    const parsed = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    const objekt = parsed.objekt as Record<string, unknown>;
+    objekt.grundstuecksflaeche = 550;
+    delete objekt.miteigentumsanteilNenner;
+
+    expect(() => importScenarios(JSON.stringify(parsed))).toThrow(
+      'Bei einer Grundstücksfläche müssen MEA – Ihr Anteil und MEA – Objekt gesamt angegeben sein.'
+    );
+  });
+
+  it('should reject absolute exit mode without its amount', () => {
+    const parsed = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    const exit = parsed.exit as Record<string, unknown>;
+    exit.verkaufsnebenkostenMode = 'absolute';
+    delete exit.verkaufsnebenkostenAbsolut;
+
+    expect(() => importScenarios(JSON.stringify(parsed))).toThrow(
+      'verkaufsnebenkostenAbsolut fehlt für den Pauschalmodus.'
+    );
+  });
+
   it('should import old scenarios without KNK-Fremdfinanzierungsanteil using the legacy boolean', () => {
     const sc = createDefaultScenario();
     const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;

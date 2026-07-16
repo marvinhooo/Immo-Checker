@@ -33,7 +33,9 @@ export function calculateExit(scenario: Scenario, projection?: ProjectionResult)
   const verkaufspreis = yearData.immobilienwert;
   const restschuld = yearData.restschuld;
 
-  const verkaufsnebenkosten = (verkaufspreis * scenario.exit.verkaufsnebenkostenPct) / 100;
+  const verkaufsnebenkosten = scenario.exit.verkaufsnebenkostenMode === 'absolute'
+    ? Math.max(0, scenario.exit.verkaufsnebenkostenAbsolut)
+    : (verkaufspreis * scenario.exit.verkaufsnebenkostenPct) / 100;
 
   // Vorfälligkeitsentschädigung, falls vor Ende der Zinsbindung verkauft wird
   const vorfaelligkeitsEntschaedigung = h < scenario.finanzierung.zinsbindungJahre
@@ -42,8 +44,10 @@ export function calculateExit(scenario: Scenario, projection?: ProjectionResult)
 
   const nettoVerkaufserloes = verkaufspreis - verkaufsnebenkosten - restschuld - vorfaelligkeitsEntschaedigung;
 
-  // Spekulationssteuer nach § 23 EStG
-  // Nur steuerpflichtig bei Haltedauer < 10 Jahren
+  // Spekulationssteuer nach § 23 Abs. 1 Nr. 1 EStG: steuerpflichtig, wenn der Zeitraum
+  // zwischen Anschaffung und Veraeusserung nicht mehr als zehn Jahre betraegt.
+  // Im Jahresraster heisst das: Exit am Ende von Jahr h ist bis einschliesslich h = 10
+  // steuerpflichtig; steuerfrei erst ab h >= 11.
   const kumulierteAfa = proj.years.slice(0, h).reduce((sum, y) => sum + y.afa, 0);
   const kaufpreis = scenario.objekt.kaufpreis;
   const knk = knkAmount(scenario);
@@ -63,7 +67,7 @@ export function calculateExit(scenario: Scenario, projection?: ProjectionResult)
       + kumulierteAfa
   );
 
-  const steuerpflichtigerSpekulationsGewinn = h < 10 && spekulationsGewinn >= 1000 ? spekulationsGewinn : 0;
+  const steuerpflichtigerSpekulationsGewinn = h <= 10 && spekulationsGewinn >= 1000 ? spekulationsGewinn : 0;
 
   let spekulationssteuer = 0;
   if (steuerpflichtigerSpekulationsGewinn > 0) {

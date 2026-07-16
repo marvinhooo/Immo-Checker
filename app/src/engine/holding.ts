@@ -30,7 +30,7 @@ export interface HoldingAnalysis {
   years: HoldingYearAnalysis[];
   breakEvenJahr: number | null; // erstes Jahr mit Gesamtgewinn >= 0
   besteExitJahrNachIrr: number | null; // Exit-Jahr mit der hoechsten IRR
-  steuerfreiAbJahr: number; // ab diesem Jahr (10) entfaellt die Spekulationssteuer
+  steuerfreiAbJahr: number; // ab diesem Exit-Jahr (11) entfaellt die Spekulationssteuer (§23: > 10 Jahre)
 }
 
 /**
@@ -99,7 +99,7 @@ export function analyzeHoldingPeriods(scenario: Scenario): HoldingAnalysis {
       nettoVerkaufserloes: exitT.nettoVerkaufserloes,
       spekulationsGewinn: exitT.spekulationsGewinn,
       spekulationssteuer: exitT.spekulationssteuer,
-      spekulationssteuerPflichtig: t < 10,
+      spekulationssteuerPflichtig: t <= 10,
       nettoVerkaufserloesNachSteuer: exitT.nettoVerkaufserloesNachSteuer,
       kumulierterCashflowNachSteuer: kumCf,
       kumulierterEkNachschuss,
@@ -118,6 +118,6 @@ export function analyzeHoldingPeriods(scenario: Scenario): HoldingAnalysis {
     years,
     breakEvenJahr,
     besteExitJahrNachIrr,
-    steuerfreiAbJahr: 10,
+    steuerfreiAbJahr: 11,
   };
 }

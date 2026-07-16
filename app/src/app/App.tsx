@@ -1,13 +1,19 @@
-import { Fragment, useState, useMemo, useEffect, useRef } from 'react';
+import { Fragment, useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useScenarioStore, useSyncedSave, useSyncedDelete } from '../store/scenarioStore';
 import { useAuthStore } from '../store/authStore';
 import { AdminPanel } from '../components/admin/AdminPanel';
-import { pushScenarios } from '../lib/sync';
+import {
+  deleteRemoteAgentDraft,
+  pullAgentDrafts,
+  pushScenarios,
+  type RemoteAgentDraft,
+} from '../lib/sync';
 import {
   knkAmount,
   totalInvest,
   cashInvestmentBreakdown,
   effectiveBodenwertAnteilPct,
+  bodenwertFlaeche,
   landValueAmount,
   loanAmount,
   annualBaseRent,
@@ -40,6 +46,17 @@ import {
   importScenarios,
   exportToCSV,
 } from '../lib/io';
+import {
+  confirmAgentField,
+  getAgentCapabilities,
+  getAgentCompleteness,
+  reconcileAgentReview,
+} from '../agent/contract';
+import {
+  isAgentDraft,
+  materializeAgentDraft,
+} from '../agent/draft';
+import { createAgentSnapshot } from '../agent/snapshot';
 
 // UI Primitives
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
@@ -50,12 +67,20 @@ import { Toggle } from '../components/ui/Toggle';
 import { Tabs } from '../components/ui/Tabs';
 import { Tooltip } from '../components/ui/Tooltip';
 import { KPICard } from '../components/ui/KPICard';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { Toast } from '../components/ui/Toast';
+import { AgentDraftDialog } from '../components/agent/AgentDraftDialog';
+import { AgentEditProvider } from '../components/agent/AgentEditContext';
+import { AgentFieldFrame } from '../components/agent/AgentFieldFrame';
+import { AgentReviewPanel } from '../components/agent/AgentReviewPanel';
+import { AgentConnectionsDialog } from '../components/auth/AgentConnectionsDialog';
 
 // Constants and Helpers
 import { BUNDESLAND_LABELS, GREST_BY_BUNDESLAND, linearAfaRateForYear } from '../engine/constants';
 import type {
   Scenario,
   BodenwertMode,
+  VerkaufsnebenkostenMode,
   Bundesland,
   ObjektTyp,
   AfaModus,
@@ -114,14 +139,15 @@ function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value));
 }
 
-function bodenrichtwertFromPct(kaufpreis: number, wohnflaeche: number, pct: number): number {
-  if (wohnflaeche <= 0) return 0;
-  return (kaufpreis * (clampPercent(pct) / 100)) / wohnflaeche;
+// flaeche = fuer den Bodenwert massgebliche Flaeche (bodenwertFlaeche: anteiliges Grundstueck, Fallback Wohnflaeche)
+function bodenrichtwertFromPct(kaufpreis: number, flaeche: number, pct: number): number {
+  if (flaeche <= 0) return 0;
+  return (kaufpreis * (clampPercent(pct) / 100)) / flaeche;
 }
 
-function bodenwertPctFromRichtwert(kaufpreis: number, wohnflaeche: number, richtwertProSqm: number): number {
+function bodenwertPctFromRichtwert(kaufpreis: number, flaeche: number, richtwertProSqm: number): number {
   if (kaufpreis <= 0) return 0;
-  return clampPercent(((Math.max(0, richtwertProSqm) * wohnflaeche) / kaufpreis) * 100);
+  return clampPercent(((Math.max(0, richtwertProSqm) * flaeche) / kaufpreis) * 100);
 }
 
 function rentPerSqmFromMonthly(monthlyRent: number, wohnflaeche: number): number {
@@ -301,6 +327,7 @@ export function App() {
   const active = useScenarioStore((s) => s.active);
   const saved = useScenarioStore((s) => s.saved);
   const updateActive = useScenarioStore((s) => s.updateActive);
+  const setActive = useScenarioStore((s) => s.setActive);
   const resetActive = useScenarioStore((s) => s.resetActive);
   const loadSaved = useScenarioStore((s) => s.loadSaved);
   const scenarioOwnerUserId = useScenarioStore((s) => s.ownerUserId);
@@ -315,6 +342,22 @@ export function App() {
   const syncedDelete = useSyncedDelete(user?.id);
 
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showAgentDraftDialog, setShowAgentDraftDialog] = useState(false);
+  const [showAgentConnections, setShowAgentConnections] = useState(false);
+  const [pendingAgentScenario, setPendingAgentScenario] = useState<Scenario | null>(null);
+  const [confirmRequest, setConfirmRequest] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    tone: 'primary' | 'danger';
+    resolve: (confirmed: boolean) => void;
+  } | null>(null);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+  const [agentEditEnabled, setAgentEditEnabled] = useState(false);
+  const [browserAgentApiEnabled, setBrowserAgentApiEnabled] = useState(false);
+  const [remoteAgentDrafts, setRemoteAgentDrafts] = useState<RemoteAgentDraft[]>([]);
+  const [isLoadingAgentDrafts, setIsLoadingAgentDrafts] = useState(false);
+  const [agentDraftInboxError, setAgentDraftInboxError] = useState<string | null>(null);
 
   useEffect(() => {
     if (user?.id) loadFromCloud(user.id);
@@ -325,6 +368,11 @@ export function App() {
   const [activeChartTab, setActiveChartTab] = useState<string>('cashflow');
   const [activeTab, setActiveTab] = useState<'dashboard' | 'compare' | 'sensitivity' | 'etf' | 'holding'>('dashboard');
   const [dashboardYear, setDashboardYear] = useState<number>(1);
+  const agentCompleteness = useMemo(
+    () => getAgentCompleteness(active.agentReview),
+    [active.agentReview],
+  );
+  const hasAgentReview = Boolean(active.agentReview);
 
   // Sensitivity analysis overrides
   const [sensSollzins, setSensSollzins] = useState<number | null>(null);
@@ -342,7 +390,21 @@ export function App() {
     setSensWert(null);
     setSensAnschluss(null);
     setDashboardYear(1);
+    setAgentEditEnabled(Boolean(active.agentReview));
   }, [active.id]);
+
+  useEffect(() => {
+    if (!hasAgentReview) return;
+    updateActive((draft) => reconcileAgentReview(draft));
+  }, [
+    active.finanzierung.equityMode,
+    active.kosten.maintenanceMode,
+    active.miete.rentMode,
+    active.objekt.bodenwertMode,
+    active.steuer.taxMode,
+    hasAgentReview,
+    updateActive,
+  ]);
 
   // Compute live calculations
   const proj = useMemo(() => runProjection(active), [active]);
@@ -383,6 +445,9 @@ export function App() {
   }, [active, financingSchedule.restschuldZinsbindungEnde]);
   const effectiveBodenwertPct = useMemo(() => effectiveBodenwertAnteilPct(active), [active]);
   const effectiveBodenwert = useMemo(() => landValueAmount(active), [active]);
+  const hasValidPlotShare = active.objekt.grundstuecksflaeche > 0
+    && active.objekt.miteigentumsanteilZaehler > 0
+    && active.objekt.miteigentumsanteilZaehler <= active.objekt.miteigentumsanteilNenner;
   const currentSollzins = sensSollzins !== null ? sensSollzins : active.finanzierung.sollzinsPct;
   const currentLeerstand = sensLeerstand !== null ? sensLeerstand : active.miete.leerstandPct;
   const baseWertRule = active.wertentwicklung.szenario.find(r => r.kind === 'rate');
@@ -399,7 +464,7 @@ export function App() {
           years: [],
           breakEvenJahr: null,
           besteExitJahrNachIrr: null,
-          steuerfreiAbJahr: 10,
+          steuerfreiAbJahr: 11,
         },
     [active, activeTab, proj.initialEquity]
   );
@@ -773,9 +838,9 @@ export function App() {
         severity: 'danger',
       });
     }
-    if (active.exit.haltedauerJahre < 10) {
+    if (active.exit.haltedauerJahre <= 10) {
       list.push({
-        message: `Haltedauer liegt unter 10 Jahren (${active.exit.haltedauerJahre} J.). Gewinne unterliegen der Spekulationssteuer gemäß §23 EStG.`,
+        message: `Haltedauer von ${active.exit.haltedauerJahre} J. wird im vereinfachten Jahresraster innerhalb der 10-Jahres-Frist behandelt (§23 EStG: „nicht mehr als zehn Jahre"). ${exitRes.spekulationssteuer > 0 ? `Die geschätzte Spekulationssteuer beträgt hier ${formatEUR(exitRes.spekulationssteuer)}.` : 'Im aktuellen Szenario fällt dennoch keine geschätzte Spekulationssteuer an.'} Im konservativen Jahresraster ist der Exit ab Jahr 11 steuerfrei; exakte Kauf- und Verkaufsvertragsdaten bitte separat prüfen.`,
         severity: 'warning',
       });
     }
@@ -883,26 +948,62 @@ export function App() {
     useScenarioStore.getState().setActive(fresh);
   };
 
-  const handleSave = async () => {
-    const overwritesExisting = saved.some((scenario) => scenario.id === active.id);
-    if (
-      overwritesExisting &&
-      !confirm(`Möchten Sie das gespeicherte Szenario "${active.name}" wirklich überschreiben?`)
-    ) {
-      return;
+  const dismissSaveToast = useCallback(() => setSaveToast(null), []);
+
+  const requestConfirm = (options: {
+    title: string;
+    message: string;
+    confirmLabel: string;
+    tone?: 'primary' | 'danger';
+  }) =>
+    new Promise<boolean>((resolve) => {
+      setConfirmRequest({
+        title: options.title,
+        message: options.message,
+        confirmLabel: options.confirmLabel,
+        tone: options.tone ?? 'primary',
+        resolve,
+      });
+    });
+
+  const confirmProvisionalAgentSave = async () => {
+    if (agentCompleteness.provisional) {
+      const proceed = await requestConfirm({
+        title: 'Agent-Auswertung noch vorläufig',
+        message: `Es gibt noch ${agentCompleteness.requiredOpen} offene Pflichtangaben und ${agentCompleteness.conflicts} Widersprüche. Trotzdem als Szenario speichern?`,
+        confirmLabel: 'Trotzdem speichern',
+      });
+      if (!proceed) return false;
     }
-    await syncedSave();
-    alert(`Szenario "${active.name}" gespeichert.`);
+    return true;
   };
 
-  const handleSaveAs = () => {
+  const handleSave = async () => {
+    if (!await confirmProvisionalAgentSave()) return;
+    const overwritesExisting = saved.some((scenario) => scenario.id === active.id);
+    if (overwritesExisting) {
+      const proceed = await requestConfirm({
+        title: 'Szenario überschreiben?',
+        message: `Das gespeicherte Szenario "${active.name}" wird mit den aktuellen Eingaben überschrieben. Alle Abschnitte werden dabei gemeinsam gespeichert.`,
+        confirmLabel: 'Überschreiben',
+        tone: 'danger',
+      });
+      if (!proceed) return;
+    }
+    await syncedSave();
+    setSaveToast(`Szenario "${active.name}" gespeichert.`);
+  };
+
+  const handleSaveAs = async () => {
     const name = prompt('Name für die neue Szenario-Kopie:', `${active.name} (Variante)`);
     if (!name || !name.trim()) return;
+    if (!await confirmProvisionalAgentSave()) return;
     updateActive((d) => {
       d.id = crypto.randomUUID();
       d.name = name.trim();
     });
-    setTimeout(() => { syncedSave(name.trim()); }, 0);
+    await syncedSave(name.trim());
+    setSaveToast(`Szenario "${name.trim()}" gespeichert.`);
   };
 
   const handleResetActive = () => {
@@ -911,21 +1012,28 @@ export function App() {
     }
   };
 
-  const handleDuplicate = () => {
+  const handleDuplicate = async () => {
+    if (!await confirmProvisionalAgentSave()) return;
     updateActive((d) => {
       d.id = crypto.randomUUID();
       d.name = `${d.name} (Kopie)`;
     });
-    setTimeout(() => { syncedSave(); }, 0);
+    await syncedSave();
+    setSaveToast('Szenario-Kopie gespeichert.');
   };
 
-  const handleRename = () => {
+  const handleRename = async () => {
     const newName = prompt('Geben Sie einen neuen Namen für das Szenario ein:', active.name);
     if (newName && newName.trim() !== '') {
+      const isAlreadySaved = saved.some((scenario) => scenario.id === active.id);
+      if (isAlreadySaved && !await confirmProvisionalAgentSave()) return;
       updateActive((d) => {
         d.name = newName.trim();
       });
-      setTimeout(() => { syncedSave(newName.trim()); }, 0);
+      if (isAlreadySaved) {
+        await syncedSave(newName.trim());
+        setSaveToast(`Szenario in "${newName.trim()}" umbenannt.`);
+      }
     }
   };
 
@@ -946,6 +1054,161 @@ export function App() {
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const stageAgentDraft = useCallback((draft: unknown) => {
+    const scenario = materializeAgentDraft(draft);
+    setPendingAgentScenario(scenario);
+    return {
+      scenarioId: scenario.id,
+      name: scenario.name,
+      completeness: getAgentCompleteness(scenario.agentReview),
+      status: 'staged' as const,
+    };
+  }, []);
+
+  const refreshRemoteAgentDrafts = useCallback(async () => {
+    const boundUserId = user?.id;
+    if (!boundUserId || scenarioOwnerUserId !== boundUserId) {
+      setRemoteAgentDrafts([]);
+      return;
+    }
+
+    setIsLoadingAgentDrafts(true);
+    setAgentDraftInboxError(null);
+    try {
+      const drafts = await pullAgentDrafts(boundUserId);
+      const authUserId = useAuthStore.getState().user?.id;
+      const ownerUserId = useScenarioStore.getState().ownerUserId;
+      if (authUserId === boundUserId && ownerUserId === boundUserId) {
+        setRemoteAgentDrafts(drafts);
+      }
+    } catch {
+      if (
+        useAuthStore.getState().user?.id === boundUserId
+        && useScenarioStore.getState().ownerUserId === boundUserId
+      ) {
+        setRemoteAgentDrafts([]);
+        setAgentDraftInboxError('Die MCP-Draft-Inbox ist noch nicht eingerichtet oder momentan nicht erreichbar.');
+      }
+    } finally {
+      if (useAuthStore.getState().user?.id === boundUserId) {
+        setIsLoadingAgentDrafts(false);
+      }
+    }
+  }, [scenarioOwnerUserId, user?.id]);
+
+  useEffect(() => {
+    setRemoteAgentDrafts([]);
+    setAgentDraftInboxError(null);
+  }, [scenarioOwnerUserId, user?.id]);
+
+  const handleRemoveRemoteAgentDraft = async (draft: RemoteAgentDraft) => {
+    if (!user?.id || scenarioOwnerUserId !== user.id) return;
+    const confirmed = await requestConfirm({
+      title: 'Agent-Draft aus Inbox entfernen?',
+      message: 'Der Entwurf wird nur aus Ihrer MCP-Inbox gelöscht. Bereits gespeicherte Szenarien bleiben unverändert.',
+      confirmLabel: 'Draft entfernen',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    try {
+      await deleteRemoteAgentDraft(user.id, draft.id);
+      setRemoteAgentDrafts((current) => current.filter((item) => item.id !== draft.id));
+    } catch {
+      setAgentDraftInboxError('Der Agent-Draft konnte nicht entfernt werden.');
+    }
+  };
+
+  const handleOpenAgentDraft = async () => {
+    if (!pendingAgentScenario) return;
+    const confirmed = await requestConfirm({
+      title: 'Agent-Entwurf öffnen?',
+      message: `Der Entwurf "${pendingAgentScenario.name}" ersetzt die aktuell sichtbaren, möglicherweise noch nicht gespeicherten Eingaben. Der Entwurf selbst wird dabei noch nicht gespeichert.`,
+      confirmLabel: 'Entwurf öffnen',
+    });
+    if (!confirmed) return;
+    setActive(pendingAgentScenario);
+    setPendingAgentScenario(null);
+    setAgentEditEnabled(true);
+    setOpenSection('objekt');
+  };
+
+  const handleConfirmAgentField = (path: string) => {
+    updateActive((draft) => confirmAgentField(draft, path));
+  };
+
+  const handleNavigateToAgentField = (path: string, section?: string) => {
+    if (section) setOpenSection(section);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const frame = document.querySelector<HTMLElement>(`[data-agent-path="${path}"]`);
+      const sectionElement = section
+        ? document.querySelector<HTMLElement>(`[data-agent-section="${section}"]`)
+        : null;
+      const target = frame ?? sectionElement;
+      target?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      const control = frame?.querySelector<HTMLElement>('input, select, textarea, button')
+        ?? sectionElement?.querySelector<HTMLElement>('.border-t input, .border-t select, .border-t textarea, .border-t button');
+      control?.focus();
+    }));
+  };
+
+  const handleExportAgentSnapshot = () => {
+    const json = JSON.stringify(createAgentSnapshot(active), null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${active.name.toLowerCase().replace(/\s+/g, '_')}_agent_snapshot.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  useEffect(() => {
+    if (!browserAgentApiEnabled || !user?.id || scenarioOwnerUserId !== user.id) {
+      delete window.immoCheckerAgent;
+      return;
+    }
+
+    const boundUserId = user.id;
+    const assertBoundAccount = () => {
+      const currentUserId = useAuthStore.getState().user?.id;
+      const ownerUserId = useScenarioStore.getState().ownerUserId;
+      if (currentUserId !== boundUserId || ownerUserId !== boundUserId) {
+        throw new Error('Agent-Verbindung ist nicht mehr für das angemeldete Konto gültig.');
+      }
+    };
+    const api = {
+      getCapabilities: () => {
+        assertBoundAccount();
+        return getAgentCapabilities();
+      },
+      listScenarios: () => {
+        assertBoundAccount();
+        const state = useScenarioStore.getState();
+        return [state.active, ...state.saved.filter((scenario) => scenario.id !== state.active.id)]
+          .map((scenario) => ({ id: scenario.id, name: scenario.name }));
+      },
+      getScenario: (scenarioId: string) => {
+        assertBoundAccount();
+        const state = useScenarioStore.getState();
+        const scenario = scenarioId === state.active.id
+          ? state.active
+          : state.saved.find((candidate) => candidate.id === scenarioId);
+        if (!scenario) throw new Error('Szenario ist in diesem angemeldeten Konto nicht verfügbar.');
+        return createAgentSnapshot(scenario);
+      },
+      stageDraft: (draft: unknown) => {
+        assertBoundAccount();
+        return stageAgentDraft(draft);
+      },
+    };
+    window.immoCheckerAgent = api;
+    window.dispatchEvent(new CustomEvent('immo-checker-agent-ready'));
+
+    return () => {
+      if (window.immoCheckerAgent === api) delete window.immoCheckerAgent;
+    };
+  }, [browserAgentApiEnabled, scenarioOwnerUserId, stageAgentDraft, user?.id]);
 
   if (!user?.id || scenarioOwnerUserId !== user.id || isSyncing) {
     return (
@@ -970,6 +1233,12 @@ export function App() {
     reader.onload = (event) => {
       try {
         const text = event.target?.result as string;
+        const raw = JSON.parse(text) as unknown;
+        if (isAgentDraft(raw)) {
+          const staged = stageAgentDraft(text);
+          alert(`Agent-Entwurf "${staged.name}" wurde geprüft und bereitgestellt. Er ist noch nicht gespeichert.`);
+          return;
+        }
         const imported = importScenarios(text);
 
         const store = useScenarioStore.getState();
@@ -1118,6 +1387,42 @@ export function App() {
         <AdminPanel onClose={() => setShowAdmin(false)} />
       )}
 
+      <AgentDraftDialog
+        open={showAgentDraftDialog}
+        onClose={() => setShowAgentDraftDialog(false)}
+        onDraftReady={stageAgentDraft}
+      />
+
+      {user?.id && (
+        <AgentConnectionsDialog
+          open={showAgentConnections}
+          userId={user.id}
+          onClose={() => setShowAgentConnections(false)}
+        />
+      )}
+
+      {confirmRequest && (
+        <ConfirmDialog
+          open
+          title={confirmRequest.title}
+          message={confirmRequest.message}
+          confirmLabel={confirmRequest.confirmLabel}
+          tone={confirmRequest.tone}
+          onConfirm={() => {
+            confirmRequest.resolve(true);
+            setConfirmRequest(null);
+          }}
+          onCancel={() => {
+            confirmRequest.resolve(false);
+            setConfirmRequest(null);
+          }}
+        />
+      )}
+
+      {saveToast && (
+        <Toast message={saveToast} onDismiss={dismissSaveToast} />
+      )}
+
       {/* Main Grid */}
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8 space-y-6">
         
@@ -1203,6 +1508,52 @@ export function App() {
               Import
             </button>
             <button
+              onClick={() => setShowAgentDraftDialog(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-700 transition cursor-pointer"
+              title="Strukturierten Agent-Entwurf prüfen und zunächst nur bereitstellen"
+            >
+              <Upload size={13} className="text-blue-500" />
+              Agent-Entwurf
+            </button>
+            <button
+              type="button"
+              onClick={() => void refreshRemoteAgentDrafts()}
+              disabled={isLoadingAgentDrafts}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 text-xs font-bold text-violet-800 transition cursor-pointer disabled:cursor-wait disabled:opacity-60"
+              title="Eigene, über MCP erstellte Agent-Drafts dieses Kontos abrufen"
+            >
+              <Download size={13} className="text-violet-500" />
+              {isLoadingAgentDrafts ? 'MCP-Inbox lädt…' : `MCP-Inbox${remoteAgentDrafts.length > 0 ? ` (${remoteAgentDrafts.length})` : ''}`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAgentConnections(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white hover:bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-800 transition cursor-pointer"
+              title="OAuth- und Immo-MCP-Verbindungen dieses Kontos verwalten"
+            >
+              Agent-Verbindungen
+            </button>
+            <button
+              onClick={handleExportAgentSnapshot}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
+              title="Eingaben und berechnete Auswertung als Agent-Snapshot exportieren"
+            >
+              <Download size={13} className="text-slate-400" />
+              Agent-Snapshot
+            </button>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={browserAgentApiEnabled}
+              aria-label="Browser-Agent-Verbindung"
+              onClick={() => setBrowserAgentApiEnabled((enabled) => !enabled)}
+              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-bold transition cursor-pointer ${browserAgentApiEnabled ? 'border-violet-300 bg-violet-50 text-violet-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+              title="Kontogebundene Browser-Agent-API nur für diesen angemeldeten Tab aktivieren"
+            >
+              <span aria-hidden="true" className={`h-2 w-2 rounded-full ${browserAgentApiEnabled ? 'bg-violet-500' : 'bg-slate-300'}`} />
+              Browser-Agent
+            </button>
+            <button
               onClick={handleExportJSON}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
               title="Aktuelles Szenario als JSON-Datei exportieren"
@@ -1242,14 +1593,120 @@ export function App() {
           </div>
         </div>
 
+        {(remoteAgentDrafts.length > 0 || agentDraftInboxError) && (
+          <section className="no-print rounded-xl border border-violet-200 bg-white px-4 py-3 shadow-2xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Eigene MCP-Draft-Inbox</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Nur Entwürfe des aktuell angemeldeten Kontos. Prüfen öffnet zunächst den sicheren Zwischenstand.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void refreshRemoteAgentDrafts()}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+              >
+                Aktualisieren
+              </button>
+            </div>
+            {agentDraftInboxError && (
+              <p role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+                {agentDraftInboxError}
+              </p>
+            )}
+            {remoteAgentDrafts.length > 0 && (
+              <ul className="mt-3 divide-y divide-slate-100" aria-label="MCP-Agent-Drafts">
+                {remoteAgentDrafts.map((draft) => {
+                  const data = draft.data && typeof draft.data === 'object'
+                    ? draft.data as Record<string, unknown>
+                    : null;
+                  const name = typeof data?.name === 'string' ? data.name : 'Unbenannter Agent-Draft';
+                  return (
+                    <li key={draft.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-800">{name}</p>
+                        <p className="mt-0.5 text-[11px] text-slate-500">Revision {draft.revision} · zuletzt aktualisiert {new Date(draft.updatedAt).toLocaleString('de-DE')}</p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            try {
+                              stageAgentDraft(draft.data);
+                              setAgentDraftInboxError(null);
+                            } catch {
+                              setAgentDraftInboxError('Dieser Agent-Draft ist ungültig und kann nicht bereitgestellt werden.');
+                            }
+                          }}
+                          className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white hover:bg-violet-800"
+                        >
+                          Prüfen
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleRemoveRemoteAgentDraft(draft)}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                        >
+                          Entfernen
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {pendingAgentScenario && (
+          <section
+            role="status"
+            className="no-print rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 shadow-2xs"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-blue-950">Agent-Entwurf bereit: {pendingAgentScenario.name}</p>
+                <p className="mt-1 text-xs leading-relaxed text-blue-800">
+                  Der Entwurf wurde validiert, aber noch nicht geöffnet oder gespeichert. Ihr aktuelles Szenario bleibt unverändert.
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingAgentScenario(null)}
+                  className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-800 hover:bg-blue-100"
+                >
+                  Verwerfen
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenAgentDraft}
+                  className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white hover:bg-blue-800"
+                >
+                  Entwurf öffnen
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        <AgentEditProvider
+          enabled={agentEditEnabled}
+          review={active.agentReview}
+          onEnabledChange={setAgentEditEnabled}
+          onConfirmField={handleConfirmAgentField}
+          onNavigateToField={handleNavigateToAgentField}
+        >
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
           
           {/* Left Column: Inputs (9 Sektionen Accordion) */}
           <div className="lg:col-span-5 space-y-4 no-print">
             <h2 className="text-lg font-bold tracking-tight text-slate-900">Parameter & Eingaben</h2>
+            <AgentReviewPanel />
 
             {/* SEKTION 1: Objekt & Kaufpreis */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div data-agent-section="objekt" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('objekt')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
@@ -1269,6 +1726,7 @@ export function App() {
               </button>
               {openSection === 'objekt' && (
                 <div className="border-t border-slate-100 px-5 py-5 space-y-4">
+                  <AgentFieldFrame path="/objekt/kaufpreis">
                   <NumberInput
                     label="Kaufpreis (€)"
                     value={active.objekt.kaufpreis}
@@ -1279,19 +1737,21 @@ export function App() {
                       if (d.objekt.bodenwertMode === 'perSqm') {
                         d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
                           val,
-                          d.objekt.wohnflaeche,
+                          bodenwertFlaeche(d),
                           d.objekt.bodenrichtwertProSqm
                         );
                       } else {
                         d.objekt.bodenrichtwertProSqm = bodenrichtwertFromPct(
                           val,
-                          d.objekt.wohnflaeche,
+                          bodenwertFlaeche(d),
                           d.objekt.bodenwertAnteilPct
                         );
                       }
                     })}
                   />
+                  </AgentFieldFrame>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <AgentFieldFrame path="/objekt/wohnflaeche">
                     <NumberInput
                       label="Wohnfläche (m²)"
                       value={active.objekt.wohnflaeche}
@@ -1301,19 +1761,21 @@ export function App() {
                         if (d.objekt.bodenwertMode === 'perSqm') {
                           d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
                             d.objekt.kaufpreis,
-                            val,
+                            bodenwertFlaeche(d),
                             d.objekt.bodenrichtwertProSqm
                           );
                         } else {
                           d.objekt.bodenrichtwertProSqm = bodenrichtwertFromPct(
                             d.objekt.kaufpreis,
-                            val,
+                            bodenwertFlaeche(d),
                             d.objekt.bodenwertAnteilPct
                           );
                         }
                         syncRentForMode(d, d.miete.rentMode);
                       })}
                     />
+                    </AgentFieldFrame>
+                    <AgentFieldFrame path="/objekt/fertigstellungsjahr">
                     <NumberInput
                       label="Baujahr / Fertigstellung"
                       value={active.objekt.fertigstellungsjahr}
@@ -1328,8 +1790,10 @@ export function App() {
                         d.afa.linearSatzPct = linearAfaRateForYear(year);
                       })}
                     />
+                    </AgentFieldFrame>
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <AgentFieldFrame path="/objekt/objektTyp">
                     <Select
                       id="objekt-typ"
                       label="Objekttyp"
@@ -1353,7 +1817,9 @@ export function App() {
                         { value: 'denkmal', label: 'Denkmal' },
                       ]}
                     />
+                    </AgentFieldFrame>
                     <div className="flex flex-col justify-end space-y-2">
+                      <AgentFieldFrame path="/objekt/bodenwertMode">
                       <Tabs
                         activeTab={active.objekt.bodenwertMode}
                         onChange={(id) => updateActive((d) => {
@@ -1362,13 +1828,13 @@ export function App() {
                           if (mode === 'perSqm') {
                             d.objekt.bodenrichtwertProSqm = bodenrichtwertFromPct(
                               d.objekt.kaufpreis,
-                              d.objekt.wohnflaeche,
+                              bodenwertFlaeche(d),
                               d.objekt.bodenwertAnteilPct
                             );
                           } else {
                             d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
                               d.objekt.kaufpreis,
-                              d.objekt.wohnflaeche,
+                              bodenwertFlaeche(d),
                               d.objekt.bodenrichtwertProSqm
                             );
                           }
@@ -1378,7 +1844,9 @@ export function App() {
                           { id: 'perSqm', label: 'EUR/m²' },
                         ]}
                       />
+                      </AgentFieldFrame>
                       {active.objekt.bodenwertMode === 'percent' ? (
+                        <AgentFieldFrame path="/objekt/bodenwertAnteilPct">
                         <Slider
                           label="Bodenwertanteil (%)"
                           value={active.objekt.bodenwertAnteilPct}
@@ -1386,7 +1854,7 @@ export function App() {
                             d.objekt.bodenwertAnteilPct = val;
                             d.objekt.bodenrichtwertProSqm = bodenrichtwertFromPct(
                               d.objekt.kaufpreis,
-                              d.objekt.wohnflaeche,
+                              bodenwertFlaeche(d),
                               val
                             );
                           })}
@@ -1394,7 +1862,10 @@ export function App() {
                           max={100}
                           suffix="%"
                         />
+                        </AgentFieldFrame>
                       ) : (
+                        <>
+                        <AgentFieldFrame path="/objekt/bodenrichtwertProSqm">
                         <NumberInput
                           label="Bodenrichtwert (€/m²)"
                           value={active.objekt.bodenrichtwertProSqm}
@@ -1404,11 +1875,92 @@ export function App() {
                             d.objekt.bodenrichtwertProSqm = val;
                             d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
                               d.objekt.kaufpreis,
-                              d.objekt.wohnflaeche,
+                              bodenwertFlaeche(d),
                               val
                             );
                           })}
                         />
+                        </AgentFieldFrame>
+                        <AgentFieldFrame path="/objekt/grundstuecksflaeche">
+                        <NumberInput
+                          label="Grundstück gesamt (m²)"
+                          value={active.objekt.grundstuecksflaeche}
+                          min={0}
+                          onChange={(val) => updateActive((d) => {
+                            d.objekt.grundstuecksflaeche = val;
+                            d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
+                              d.objekt.kaufpreis,
+                              bodenwertFlaeche(d),
+                              d.objekt.bodenrichtwertProSqm
+                            );
+                          })}
+                        />
+                        </AgentFieldFrame>
+                        <div className="grid grid-cols-2 gap-2">
+                          <AgentFieldFrame path="/objekt/miteigentumsanteilZaehler">
+                          <NumberInput
+                            label="MEA – Ihr Anteil"
+                            value={active.objekt.miteigentumsanteilZaehler}
+                            suffix="plain"
+                            min={1}
+                            onChange={(val) => updateActive((d) => {
+                              d.objekt.miteigentumsanteilZaehler = Math.max(1, val);
+                              d.objekt.miteigentumsanteilNenner = Math.max(
+                                d.objekt.miteigentumsanteilNenner,
+                                d.objekt.miteigentumsanteilZaehler
+                              );
+                              d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
+                                d.objekt.kaufpreis,
+                                bodenwertFlaeche(d),
+                                d.objekt.bodenrichtwertProSqm
+                              );
+                            })}
+                          />
+                          </AgentFieldFrame>
+                          <AgentFieldFrame path="/objekt/miteigentumsanteilNenner">
+                          <NumberInput
+                            label="MEA – Objekt gesamt"
+                            value={active.objekt.miteigentumsanteilNenner}
+                            suffix="plain"
+                            min={active.objekt.miteigentumsanteilZaehler}
+                            onChange={(val) => updateActive((d) => {
+                              d.objekt.miteigentumsanteilNenner = Math.max(
+                                d.objekt.miteigentumsanteilZaehler,
+                                val
+                              );
+                              d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
+                                d.objekt.kaufpreis,
+                                bodenwertFlaeche(d),
+                                d.objekt.bodenrichtwertProSqm
+                              );
+                            })}
+                          />
+                          </AgentFieldFrame>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-snug">
+                          Maßgeblich für den <strong>MEA (Miteigentumsanteil)</strong> sind Teilungserklärung und
+                          Grundbuchauszug (Bestandsverzeichnis). Häufig steht er zusätzlich in der Hausgeld-/WEG-Abrechnung
+                          unter „Verteilungsbasis Miteigentumsanteile“: „Ihr Anteil“ / „Objekt“ (z. B. 57 / 1.000).
+                        </p>
+                        {hasValidPlotShare ? (
+                          <p className="text-[10px] text-slate-500 leading-snug">
+                            Anteilige Grundstücksfläche: <strong className="text-slate-700">{formatNumber(bodenwertFlaeche(active), 1)} m²</strong>
+                            {' '}(Grundstück × MEA {formatNumber(active.objekt.miteigentumsanteilZaehler, 0)}/{formatNumber(active.objekt.miteigentumsanteilNenner, 0)}).
+                            {active.objekt.miteigentumsanteilZaehler === 1 && active.objekt.miteigentumsanteilNenner === 1
+                              ? ' 1/1 bedeutet Alleineigentum; bei einer Eigentumswohnung bitte durch den tatsächlichen MEA ersetzen.'
+                              : ''}
+                          </p>
+                        ) : active.objekt.grundstuecksflaeche > 0 ? (
+                          <p className="text-[10px] font-medium text-amber-600 leading-snug">
+                            Der MEA muss größer als 0 sein und darf „Objekt gesamt“ nicht überschreiten.
+                          </p>
+                        ) : (
+                          <p className="text-[10px] font-medium text-amber-600 leading-snug">
+                            Ohne Grundstücksfläche wird der Richtwert näherungsweise mit der Wohnfläche multipliziert —
+                            bei Eigentumswohnungen meist deutlich zu hoch (zu wenig AfA). Grundstücksfläche und MEA eintragen!
+                          </p>
+                        )}
+                        </>
                       )}
                       <div className="rounded-lg bg-slate-50 px-3 py-2 text-[10px] font-medium text-slate-500">
                         Bodenwert: <strong className="text-slate-700">{formatEUR(effectiveBodenwert)}</strong>
@@ -1416,9 +1968,15 @@ export function App() {
                       </div>
                       <p className="text-[10px] text-slate-400 mt-1 leading-snug">
                         Anteil des Grundstückswerts am Kaufpreis — nur das Gebäude ist abschreibbar (AfA).
-                        Im EUR/m²-Modus wird der Bodenrichtwert mit der Wohnfläche multipliziert.
-                        Nachschlagen im <strong>Bodenrichtwert-Informationssystem (BORIS)</strong> Ihres Bundeslandes
-                        oder im Kaufvertrag. Richtwerte: Großstadt 30–50 %, Stadtrand 20–30 %, ländlich 10–20 %.
+                        Im EUR/m²-Modus: Bodenwert = Bodenrichtwert × anteilige Grundstücksfläche (Grundstück × MEA).
+                      </p>
+                      <p className="text-[10px] text-slate-400 leading-snug">
+                        <strong>So ermitteln Sie den Bodenrichtwert genau:</strong> Kostenlos im BORIS-Portal Ihres
+                        Bundeslandes (zentral: bodenrichtwerte-boris.de, für Sachsen: boris.sachsen.de) — Adresse suchen,
+                        die Bodenrichtwertzone für Wohnbaufläche (W) anklicken und den zum <strong>Kauf- bzw.
+                        Bewertungsstichtag passenden Wert</strong> übernehmen. Grundstücksfläche und Miteigentumsanteil (MEA, z. B. 57/1000)
+                        stehen im <strong>Grundbuchauszug</strong> bzw. in der <strong>Teilungserklärung</strong>.
+                        Noch genauer: BMF-Arbeitshilfe „Kaufpreisaufteilung" oder Auskunft des örtlichen Gutachterausschusses.
                       </p>
                     </div>
                   </div>
@@ -1445,7 +2003,7 @@ export function App() {
             </div>
 
             {/* SEKTION 2: Kaufnebenkosten */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div data-agent-section="knk" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('knk')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
@@ -1465,6 +2023,7 @@ export function App() {
               </button>
               {openSection === 'knk' && (
                 <div className="border-t border-slate-100 px-5 py-5 space-y-4">
+                  <AgentFieldFrame path="/objekt/bundesland">
                   <Select
                     label="Bundesland (für GrESt-Satz)"
                     value={active.objekt.bundesland}
@@ -1477,6 +2036,7 @@ export function App() {
                     }}
                     options={Object.entries(BUNDESLAND_LABELS).map(([k, v]) => ({ value: k, label: v }))}
                   />
+                  </AgentFieldFrame>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <NumberInput
                       label="Grunderwerbsteuer"
@@ -1545,7 +2105,7 @@ export function App() {
             </div>
 
             {/* SEKTION 3: Finanzierung */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div data-agent-section="finanzierung" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('finanzierung')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
@@ -1565,6 +2125,7 @@ export function App() {
               </button>
               {openSection === 'finanzierung' && (
                 <div className="border-t border-slate-100 px-5 py-5 space-y-4">
+                  <AgentFieldFrame path="/finanzierung/equityMode">
                   <div className="space-y-1.5">
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Eigenkapital Modus</span>
                     <Tabs
@@ -1576,7 +2137,9 @@ export function App() {
                       ]}
                     />
                   </div>
+                  </AgentFieldFrame>
                   {active.finanzierung.equityMode === 'percent' ? (
+                    <AgentFieldFrame path="/finanzierung/equityPct">
                     <Slider
                       label="Eigenkapital auf Kaufpreis + Sanierung (%)"
                       value={active.finanzierung.equityPct}
@@ -1585,7 +2148,9 @@ export function App() {
                       max={100}
                       suffix="%"
                     />
+                    </AgentFieldFrame>
                   ) : (
+                    <AgentFieldFrame path="/finanzierung/equityAbsolute">
                     <NumberInput
                       label="Eigenkapital für Kaufpreis + Sanierung (€)"
                       value={active.finanzierung.equityAbsolute}
@@ -1593,8 +2158,10 @@ export function App() {
                       min={0}
                       onChange={(val) => updateActive((d) => { d.finanzierung.equityAbsolute = val; })}
                     />
+                    </AgentFieldFrame>
                   )}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <AgentFieldFrame path="/finanzierung/sollzinsPct">
                     <Slider
                       label="Sollzins p. a."
                       value={active.finanzierung.sollzinsPct}
@@ -1604,6 +2171,8 @@ export function App() {
                       step={0.05}
                       suffix="%"
                     />
+                    </AgentFieldFrame>
+                    <AgentFieldFrame path="/finanzierung/tilgungPct">
                     <Slider
                       label="Anf. Tilgung p. a."
                       value={active.finanzierung.tilgungPct}
@@ -1613,8 +2182,10 @@ export function App() {
                       step={0.1}
                       suffix="%"
                     />
+                    </AgentFieldFrame>
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <AgentFieldFrame path="/finanzierung/zinsbindungJahre">
                     <Slider
                       label="Zinsbindung (Jahre)"
                       value={active.finanzierung.zinsbindungJahre}
@@ -1623,6 +2194,8 @@ export function App() {
                       max={30}
                       step={1}
                     />
+                    </AgentFieldFrame>
+                    <AgentFieldFrame path="/finanzierung/anschlusszinsPct">
                     <Slider
                       label="Anschlusszins p. a."
                       value={active.finanzierung.anschlusszinsPct}
@@ -1632,6 +2205,7 @@ export function App() {
                       step={0.1}
                       suffix="%"
                     />
+                    </AgentFieldFrame>
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Slider
@@ -1725,7 +2299,7 @@ export function App() {
             </div>
 
             {/* SEKTION 4: Miete */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div data-agent-section="miete" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('miete')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
@@ -1746,7 +2320,9 @@ export function App() {
               </button>
               {openSection === 'miete' && (
                 <div className="border-t border-slate-100 px-5 py-5 space-y-4">
+                  <AgentFieldFrame path="/miete/rentMode">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <AgentFieldFrame path="/miete/kaltmieteProMonat">
                     <NumberInput
                       label="Monatliche Kaltmiete"
                       value={active.miete.kaltmieteProMonat}
@@ -1755,6 +2331,8 @@ export function App() {
                       fractionDigits={2}
                       onChange={(val) => updateActive((d) => { updateRentFromMonthly(d, val); })}
                     />
+                    </AgentFieldFrame>
+                    <AgentFieldFrame path="/miete/kaltmieteProJahr">
                     <NumberInput
                       label="Kaltmiete p. a. (Jahr)"
                       value={active.miete.kaltmieteProJahr}
@@ -1763,6 +2341,8 @@ export function App() {
                       fractionDigits={2}
                       onChange={(val) => updateActive((d) => { updateRentFromYear(d, val); })}
                     />
+                    </AgentFieldFrame>
+                    <AgentFieldFrame path="/miete/kaltmieteProSqm">
                     <NumberInput
                       label="Miete pro m²/Monat"
                       value={active.miete.kaltmieteProSqm}
@@ -1771,6 +2351,7 @@ export function App() {
                       fractionDigits={2}
                       onChange={(val) => updateActive((d) => { updateRentFromSqm(d, val); })}
                     />
+                    </AgentFieldFrame>
                     <Slider
                       label="Leerstandsquote"
                       value={active.miete.leerstandPct}
@@ -1781,6 +2362,7 @@ export function App() {
                       suffix="%"
                     />
                   </div>
+                  </AgentFieldFrame>
 
                   <hr className="border-slate-100" />
 
@@ -2151,7 +2733,7 @@ export function App() {
             </div>
 
             {/* SEKTION 5: Laufende Kosten */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div data-agent-section="kosten" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('kosten')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
@@ -2171,6 +2753,7 @@ export function App() {
               </button>
               {openSection === 'kosten' && (
                 <div className="border-t border-slate-100 px-5 py-5 space-y-4">
+                  <AgentFieldFrame path="/kosten/maintenanceMode">
                   <div className="space-y-1.5">
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Instandhaltung Modus</span>
                     <Tabs
@@ -2183,15 +2766,19 @@ export function App() {
                       ]}
                     />
                   </div>
+                  </AgentFieldFrame>
                   {active.kosten.maintenanceMode === 'perSqm' && (
+                    <AgentFieldFrame path="/kosten/instandhaltungProSqm">
                     <NumberInput
                       label="Instandhaltung pro m²/Jahr"
                       value={active.kosten.instandhaltungProSqm}
                       min={0}
                       onChange={(val) => updateActive((d) => { d.kosten.instandhaltungProSqm = val; })}
                     />
+                    </AgentFieldFrame>
                   )}
                   {active.kosten.maintenanceMode === 'percentRent' && (
+                    <AgentFieldFrame path="/kosten/instandhaltungPctRent">
                     <Slider
                       label="Instandhaltung (% der Kaltmiete)"
                       value={active.kosten.instandhaltungPctRent}
@@ -2200,8 +2787,10 @@ export function App() {
                       max={20}
                       suffix="%"
                     />
+                    </AgentFieldFrame>
                   )}
                   {active.kosten.maintenanceMode === 'absolute' && (
+                    <AgentFieldFrame path="/kosten/instandhaltungAbsolut">
                     <NumberInput
                       label="Instandhaltung pro Jahr"
                       value={active.kosten.instandhaltungAbsolut}
@@ -2209,6 +2798,7 @@ export function App() {
                       min={0}
                       onChange={(val) => updateActive((d) => { d.kosten.instandhaltungAbsolut = val; })}
                     />
+                    </AgentFieldFrame>
                   )}
                   <div className="space-y-1.5">
                     <Slider
@@ -2259,7 +2849,7 @@ export function App() {
             </div>
 
             {/* SEKTION 6: Steuer */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div data-agent-section="steuer" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('steuer')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
@@ -2282,6 +2872,7 @@ export function App() {
               </button>
               {openSection === 'steuer' && (
                 <div className="border-t border-slate-100 px-5 py-5 space-y-4">
+                  <AgentFieldFrame path="/steuer/taxMode">
                   <div className="space-y-1.5">
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Steuer Modus</span>
                     <Tabs
@@ -2293,8 +2884,10 @@ export function App() {
                       ]}
                     />
                   </div>
+                  </AgentFieldFrame>
                   {active.steuer.taxMode === 'income' ? (
                     <div className="space-y-4">
+                      <AgentFieldFrame path="/steuer/bruttoJahresEinkommen">
                       <NumberInput
                         label="zu versteuerndes Einkommen (€)"
                         value={active.steuer.bruttoJahresEinkommen}
@@ -2302,6 +2895,8 @@ export function App() {
                         min={0}
                         onChange={(val) => updateActive((d) => { d.steuer.bruttoJahresEinkommen = val; })}
                       />
+                      </AgentFieldFrame>
+                      <AgentFieldFrame path="/steuer/veranlagung">
                       <Select
                         label="Veranlagung"
                         value={active.steuer.veranlagung}
@@ -2314,8 +2909,10 @@ export function App() {
                           { value: 'splitting', label: 'Ehegattensplitting' },
                         ]}
                       />
+                      </AgentFieldFrame>
                     </div>
                   ) : (
+                    <AgentFieldFrame path="/steuer/grenzsteuersatzPct">
                     <Slider
                       label="Fester Grenzsteuersatz (%)"
                       value={active.steuer.grenzsteuersatzPct}
@@ -2325,6 +2922,7 @@ export function App() {
                       step={1}
                       suffix="%"
                     />
+                    </AgentFieldFrame>
                   )}
                   <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg text-xs font-medium text-slate-600">
                     <span>{active.steuer.taxMode === 'income' ? 'Berechneter Grenzsteuersatz:' : 'Grenzsteuersatz:'}</span>
@@ -2358,7 +2956,7 @@ export function App() {
             </div>
 
             {/* SEKTION 7: AfA (Abschreibung) */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div data-agent-section="afa" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('afa')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
@@ -2441,7 +3039,7 @@ export function App() {
             </div>
 
             {/* SEKTION 8: Geplante Sanierungen */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div data-agent-section="sanierungen" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('sanierungen')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
@@ -2613,7 +3211,7 @@ export function App() {
             </div>
 
             {/* SEKTION 9: Wertentwicklung */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div data-agent-section="wertentwicklung" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('wertentwicklung')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
@@ -2756,7 +3354,7 @@ export function App() {
             </div>
 
             {/* SEKTION 10: Exit (Verkauf) */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div data-agent-section="exit" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('exit')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
@@ -2777,6 +3375,7 @@ export function App() {
               {openSection === 'exit' && (
                 <div className="border-t border-slate-100 px-5 py-5 space-y-4">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <AgentFieldFrame path="/exit/haltedauerJahre">
                     <Slider
                       label="Haltedauer (Jahre)"
                       value={active.exit.haltedauerJahre}
@@ -2785,15 +3384,45 @@ export function App() {
                       max={40}
                       step={1}
                     />
-                    <Slider
-                      label="Verkaufsnebenkosten (%)"
-                      value={active.exit.verkaufsnebenkostenPct}
-                      onChange={(val) => updateActive((d) => { d.exit.verkaufsnebenkostenPct = val; })}
-                      min={0}
-                      max={10}
-                      step={0.1}
-                      suffix="%"
-                    />
+                    </AgentFieldFrame>
+                    <div className="flex flex-col justify-end space-y-2">
+                      <AgentFieldFrame path="/exit/verkaufsnebenkostenMode">
+                      <Tabs
+                        activeTab={active.exit.verkaufsnebenkostenMode}
+                        onChange={(id) => updateActive((d) => {
+                          d.exit.verkaufsnebenkostenMode = id as VerkaufsnebenkostenMode;
+                        })}
+                        tabs={[
+                          { id: 'percent', label: '% vom Preis' },
+                          { id: 'absolute', label: 'EUR pauschal' },
+                        ]}
+                      />
+                      </AgentFieldFrame>
+                      {active.exit.verkaufsnebenkostenMode === 'percent' ? (
+                        <AgentFieldFrame path="/exit/verkaufsnebenkostenPct">
+                        <Slider
+                          label="Verkaufsnebenkosten (%)"
+                          value={active.exit.verkaufsnebenkostenPct}
+                          onChange={(val) => updateActive((d) => { d.exit.verkaufsnebenkostenPct = val; })}
+                          min={0}
+                          max={10}
+                          step={0.1}
+                          suffix="%"
+                        />
+                        </AgentFieldFrame>
+                      ) : (
+                        <AgentFieldFrame path="/exit/verkaufsnebenkostenAbsolut">
+                        <NumberInput
+                          label="Verkaufsnebenkosten (Pauschale)"
+                          value={active.exit.verkaufsnebenkostenAbsolut}
+                          suffix="EUR"
+                          min={0}
+                          onChange={(val) => updateActive((d) => { d.exit.verkaufsnebenkostenAbsolut = val; })}
+                        />
+                        </AgentFieldFrame>
+                      )}
+                    </div>
+                    <AgentFieldFrame path="/exit/vorfaelligkeitPct">
                     <Slider
                       label="Vorfälligkeit vor Zinsbindungsende (%)"
                       value={active.exit.vorfaelligkeitPct}
@@ -2803,14 +3432,21 @@ export function App() {
                       step={0.1}
                       suffix="%"
                     />
+                    </AgentFieldFrame>
                   </div>
+                  <p className="text-[10px] text-slate-400 leading-snug">
+                    Sinnvolle Pauschale ohne Makler: ca. 1.500–3.000 € (Energieausweis, Unterlagen,
+                    Löschung der Grundschuld, ggf. Rechtsberatung). Mit Verkäufer-Makler eher 3–4 %
+                    des Verkaufspreises — dann den %-Modus nutzen. Aktuell angesetzt:{' '}
+                    <strong className="text-slate-600">{formatEUR(exitRes.verkaufsnebenkosten)}</strong>.
+                  </p>
                   <SectionSaveButton onSave={handleSave} />
                 </div>
               )}
             </div>
 
             {/* SEKTION 11: Notizen */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div data-agent-section="notizen" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
               <button
                 onClick={() => toggleSection('notizen')}
                 className="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-800 hover:bg-slate-50/50 transition duration-150 cursor-pointer"
@@ -2856,6 +3492,14 @@ export function App() {
 
           {/* Right Column: Results & Dashboard */}
           <div className="lg:col-span-7 space-y-6">
+            {agentCompleteness.provisional && (
+              <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 shadow-2xs">
+                <p className="text-sm font-bold">Vorläufige Agent-Auswertung</p>
+                <p className="mt-1 text-xs leading-relaxed">
+                  {agentCompleteness.requiredOpen} Pflichtangaben sind noch offen und {agentCompleteness.conflicts} Widersprüche ungeklärt. Kennzahlen basieren bis zur Prüfung teilweise auf App-Standards.
+                </p>
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200/60 pb-4">
               <h2 className="text-lg font-bold tracking-tight text-slate-900">Auswertung & Analyse</h2>
               <div className="w-full sm:w-auto">
@@ -3655,9 +4299,9 @@ export function App() {
                         <div className="text-xs text-slate-400">erstes Jahr mit positivem Gesamtergebnis</div>
                       </div>
                       <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Spekulationsfrei ab</div>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Im Jahresraster steuerfrei ab</div>
                         <div className="text-lg font-extrabold text-blue-700 tabular-nums">Jahr {holdingAnalysis.steuerfreiAbJahr}</div>
-                        <div className="text-xs text-blue-600/80">ab dann kein §23-EStG-Gewinn versteuert</div>
+                        <div className="text-xs text-blue-600/80">Modellgrenze; exakte Vertragsdaten separat prüfen</div>
                       </div>
                     </div>
 
@@ -3689,10 +4333,10 @@ export function App() {
                           <ReferenceLine yAxisId="left" y={0} stroke="#cbd5e1" />
                           <ReferenceLine
                             yAxisId="left"
-                            x={10}
+                            x={holdingAnalysis.steuerfreiAbJahr}
                             stroke="#3b82f6"
                             strokeDasharray="4 4"
-                            label={{ value: 'steuerfrei', position: 'top', fill: '#2563eb', fontSize: 10 }}
+                            label={{ value: 'Modell: steuerfrei', position: 'top', fill: '#2563eb', fontSize: 10 }}
                           />
                           <Bar yAxisId="left" dataKey="gesamtgewinn" name="Gesamtgewinn (€)" fill="#a5b4fc" radius={[3, 3, 0, 0]} />
                           <Line yAxisId="right" type="monotone" dataKey="irr" name="IRR p. a. (%)" stroke="#059669" strokeWidth={2} dot={false} />
@@ -3736,7 +4380,7 @@ export function App() {
                                 >
                                   <td className={`sticky left-0 py-1.5 pr-3 ${isChosen ? 'bg-blue-50' : 'bg-white'}`}>
                                     {y.jahr}
-                                    {y.jahr === 10 && <span className="ml-1 text-[9px] text-blue-500">(steuerfrei)</span>}
+                                    {y.jahr === holdingAnalysis.steuerfreiAbJahr && <span className="ml-1 text-[9px] text-blue-500">(Modell: steuerfrei)</span>}
                                   </td>
                                   <td className="py-1.5 px-3 text-right">{formatEUR(y.immobilienwert)}</td>
                                   <td className="py-1.5 px-3 text-right text-slate-500">{formatEUR(y.restschuld)}</td>
@@ -3785,7 +4429,7 @@ export function App() {
               <ul className="list-disc pl-4 space-y-0.5">
                 <li>Steuer-/AfA-Stand: Veranlagungsjahr 2026 (ESt-Tarif §32a, Grunderwerbsteuer je Bundesland, AfA-Sätze). Alle Werte in der UI editierbar.</li>
                 <li>Steuereffekt aus Vermietung &amp; Verpachtung über den Tarif-Unterschied (mit/ohne V&amp;V) bzw. wahlweise über einen festen Grenzsteuersatz; nur Schuldzinsen, AfA und nicht-umlagefähige Kosten sind Werbungskosten (Tilgung nicht).</li>
-                <li>Spekulationssteuer (§23 EStG) wird mit dem Grenzsteuersatz auf den Gewinn (inkl. Wiederaufnahme genutzter AfA) geschätzt; ab 10 Jahren Haltedauer steuerfrei.</li>
+                <li>Spekulationssteuer (§23 EStG) wird mit dem Grenzsteuersatz auf den Gewinn (inkl. Wiederaufnahme genutzter AfA) geschätzt; im Jahresraster ist Jahr 10 noch innerhalb der Frist, steuerfrei wird der Exit ab Jahr 11 modelliert.</li>
                 <li>Wert- und Mietentwicklung sind szenariobasiert (frei einstellbare Stufen/Raten), keine Marktprognose. Leerstand pauschal als Mietausfallwagnis.</li>
                 <li>Nicht abgebildet: WEG-Sonderumlagen, individuelle Förderdarlehen, Umsatzsteuer-Option, gewerblicher Grundstückshandel, Bonitäts-/Liquiditätsprüfung der Bank.</li>
               </ul>
@@ -3794,6 +4438,7 @@ export function App() {
           </div>
 
         </div>
+        </AgentEditProvider>
       </main>
     </div>
   );

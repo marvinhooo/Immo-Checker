@@ -125,6 +125,42 @@ describe('Dashboard-Jahresauswahl', () => {
     expect(measureHint).toHaveTextContent('Neue Heizung: nach Abschluss in Jahr 4 ggf. möglich.');
     expect(screen.getByText(/Keine automatische Mietanpassung/)).toBeInTheDocument();
   });
+
+  it('zeigt die MEA-Felder verständlich und berechnet die anteilige Grundstücksfläche', () => {
+    const active = structuredClone(useScenarioStore.getState().active);
+    active.objekt.grundstuecksflaeche = 550;
+    active.objekt.miteigentumsanteilZaehler = 57;
+    active.objekt.miteigentumsanteilNenner = 1000;
+    useScenarioStore.setState({ active });
+
+    render(<App />);
+
+    expect(screen.getByLabelText('MEA – Ihr Anteil')).toHaveValue('57');
+    expect(screen.getByLabelText('MEA – Objekt gesamt')).toHaveValue('1000');
+    expect(screen.getByText(/Verteilungsbasis Miteigentumsanteile/)).toBeVisible();
+    expect(screen.getByText('31,4 m²')).toBeVisible();
+  });
+
+  it('schaltet Verkaufsnebenkosten sichtbar auf eine EUR-Pauschale um', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByText('Verkauf (Exit)').closest('button') as HTMLButtonElement);
+    fireEvent.click(screen.getByRole('button', { name: 'EUR pauschal' }));
+
+    expect(screen.getByLabelText('Verkaufsnebenkosten (Pauschale)')).toBeVisible();
+    expect(useScenarioStore.getState().active.exit.verkaufsnebenkostenMode).toBe('absolute');
+    expect(useScenarioStore.getState().active.exit.verkaufsnebenkostenAbsolut).toBe(2500);
+  });
+
+  it('markiert im Jahresraster erst Exit-Jahr 11 als steuerfrei', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Verkauf$/ }));
+
+    const taxFreeBadge = screen.getByText('(Modell: steuerfrei)');
+    expect(taxFreeBadge.closest('td')).toHaveTextContent('11');
+    expect(taxFreeBadge.closest('td')).not.toHaveTextContent('10(Modell: steuerfrei)');
+  });
 });
 
 describe('AfA-Satz-Ableitung aus dem Baujahr', () => {
@@ -184,5 +220,77 @@ describe('AfA-Satz-Ableitung aus dem Baujahr', () => {
     const state = useScenarioStore.getState().active;
     expect(state.afa.modus).toBe('denkmal7i');
     expect(state.afa.linearSatzPct).toBe(2.5);
+  });
+});
+
+describe('Szenario speichern über Abschnitts-Buttons', () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      user: { id: 'test-user', email: 'test@example.com' } as User,
+      session: null,
+      profile: null,
+      isLoading: false,
+      authView: 'login',
+    });
+    useScenarioStore.setState({
+      ownerUserId: 'test-user',
+      active: createDefaultScenario(),
+      saved: [],
+      isSyncing: false,
+      syncError: null,
+      loadFromCloud: vi.fn(async () => {}),
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    useAuthStore.setState(initialAuthState, true);
+    useScenarioStore.setState(initialScenarioState, true);
+  });
+
+  it('speichert über den Abschnitts-Button immer das komplette Szenario', async () => {
+    const store = useScenarioStore.getState();
+    store.updateActive((d) => { d.objekt.kaufpreis = 123456; });
+    store.updateActive((d) => { d.kosten.ruecklagenAnteilPct = 37; });
+    store.updateActive((d) => { d.exit.haltedauerJahre = 22; });
+
+    render(<App />);
+
+    // Nur der Button des offenen Objekt-Abschnitts ist gerendert.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Szenario speichern' })[0]);
+
+    expect(await screen.findByRole('status')).toHaveTextContent('gespeichert');
+
+    const saved = useScenarioStore.getState().saved;
+    expect(saved).toHaveLength(1);
+    // Auch Werte aus nicht geöffneten Abschnitten sind gespeichert:
+    expect(saved[0].objekt.kaufpreis).toBe(123456);
+    expect(saved[0].kosten.ruecklagenAnteilPct).toBe(37);
+    expect(saved[0].exit.haltedauerJahre).toBe(22);
+  });
+
+  it('fragt vor dem Überschreiben mit eigenem Dialog nach und speichert erst nach Bestätigung', async () => {
+    const original = structuredClone(useScenarioStore.getState().active);
+    useScenarioStore.setState({ saved: [original] });
+    useScenarioStore.getState().updateActive((d) => { d.miete.leerstandPct = 7; });
+
+    render(<App />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Szenario speichern' })[0]);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Szenario überschreiben?');
+
+    // Abbrechen: nichts überschrieben
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(useScenarioStore.getState().saved[0].miete.leerstandPct).toBe(original.miete.leerstandPct);
+
+    // Erneut speichern und bestätigen
+    fireEvent.click(screen.getAllByRole('button', { name: 'Szenario speichern' })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Überschreiben' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('gespeichert');
+    expect(useScenarioStore.getState().saved[0].miete.leerstandPct).toBe(7);
   });
 });

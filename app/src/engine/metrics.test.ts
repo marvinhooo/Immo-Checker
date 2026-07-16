@@ -48,8 +48,10 @@ describe('Metrics Engine', () => {
       expect(metrics.nettomietrendite).toBeLessThan(metrics.bruttomietrendite);
       expect(metrics.nettomietrendite).toBeGreaterThan(0);
 
-      // IRR of a standard investment should be calculated and positive
-      expect(metrics.irr).toBeGreaterThan(1.0);
+      // IRR of a standard investment should be calculated and positive.
+      // Der Exit in Jahr 10 traegt seit dem §23-Fix Spekulationssteuer,
+      // daher liegt die IRR unter dem frueheren steuerfreien Wert.
+      expect(metrics.irr).toBeGreaterThan(0);
       expect(metrics.rating).toBeDefined();
 
       // Break-even points should be calculated

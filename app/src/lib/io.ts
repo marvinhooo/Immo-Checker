@@ -1,9 +1,11 @@
 import { Scenario, SCHEMA_VERSION } from '../engine/types';
 import { ProjectionYear } from '../engine/projection';
+import { isAgentFieldPath } from '../agent/contract';
 
 const BUNDESLAENDER = ['BW', 'BY', 'BE', 'BB', 'HB', 'HH', 'HE', 'MV', 'NI', 'NW', 'RP', 'SL', 'SN', 'ST', 'SH', 'TH'] as const;
 const OBJEKT_TYPEN = ['bestand', 'neubau', 'denkmal'] as const;
 const BODENWERT_MODES = ['percent', 'perSqm'] as const;
+const VERKAUFSNEBENKOSTEN_MODES = ['percent', 'absolute'] as const;
 const EQUITY_MODES = ['percent', 'absolute'] as const;
 const RENT_MODES = ['perMonth', 'perYear', 'perSqm'] as const;
 const MAINTENANCE_MODES = ['perSqm', 'percentRent', 'absolute'] as const;
@@ -19,6 +21,9 @@ const SANIERUNG_STEUERARTEN = [
   'denkmal11b',
   'keine',
 ] as const;
+const AGENT_SOURCE_KINDS = ['pdf', 'web', 'api', 'text', 'manual'] as const;
+const AGENT_FIELD_STATUSES = ['missing', 'uncertain', 'confirmed', 'not_applicable', 'conflict'] as const;
+const AGENT_FIELD_ORIGINS = ['extracted', 'inferred', 'assumption', 'derived', 'user'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -36,6 +41,20 @@ function requireString(obj: Record<string, unknown>, key: string, prefix: string
   const value = obj[key];
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`${prefix}${key} muss ein nicht-leerer Text sein.`);
+  }
+  return value;
+}
+
+function requireOptionalString(
+  obj: Record<string, unknown>,
+  key: string,
+  prefix: string,
+  maxLength: number,
+): string | undefined {
+  const value = obj[key];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string' || value.length > maxLength) {
+    throw new Error(`${prefix}${key} muss ein Text mit maximal ${maxLength} Zeichen sein.`);
   }
   return value;
 }
@@ -121,6 +140,72 @@ function validateIncreaseRules(value: unknown, label: string, prefix: string): v
   });
 }
 
+function validateAgentReview(value: unknown, prefix: string): void {
+  if (!isRecord(value)) throw new Error(`${prefix}agentReview muss ein Objekt sein.`);
+  if (requireNumber(value, 'version', prefix) !== 1) {
+    throw new Error(`${prefix}Nicht unterstuetzte agentReview-Version.`);
+  }
+  requireString(value, 'updatedAt', prefix);
+
+  if (!Array.isArray(value.sources) || value.sources.length > 20) {
+    throw new Error(`${prefix}agentReview.sources muss ein Array mit maximal 20 Eintraegen sein.`);
+  }
+  const sourceIds = new Set<string>();
+  value.sources.forEach((source, index) => {
+    const sourcePrefix = `${prefix}Agent-Quelle [${index + 1}]: `;
+    if (!isRecord(source)) throw new Error(`${sourcePrefix}Quelle muss ein Objekt sein.`);
+    const id = requireString(source, 'id', sourcePrefix);
+    if (sourceIds.has(id)) throw new Error(`${prefix}Agent-Quellen enthalten die doppelte ID "${id}".`);
+    sourceIds.add(id);
+    requireEnum(source, 'kind', AGENT_SOURCE_KINDS, sourcePrefix);
+    requireString(source, 'label', sourcePrefix);
+    requireOptionalString(source, 'url', sourcePrefix, 2_000);
+    requireOptionalString(source, 'sha256', sourcePrefix, 128);
+    requireOptionalString(source, 'retrievedAt', sourcePrefix, 80);
+  });
+
+  if (!isRecord(value.fields) || Object.keys(value.fields).length > 120) {
+    throw new Error(`${prefix}agentReview.fields muss ein Objekt mit maximal 120 Eintraegen sein.`);
+  }
+  if (value.warnings !== undefined && value.warnings !== null) {
+    if (!Array.isArray(value.warnings) || value.warnings.length > 50) {
+      throw new Error(`${prefix}agentReview.warnings muss ein Array mit maximal 50 Eintraegen sein.`);
+    }
+    value.warnings.forEach((warning, index) => {
+      if (typeof warning !== 'string' || warning.trim() === '' || warning.length > 500) {
+        throw new Error(`${prefix}Agent-Warnung [${index + 1}] muss ein Text mit maximal 500 Zeichen sein.`);
+      }
+    });
+  }
+  for (const [path, field] of Object.entries(value.fields)) {
+    const fieldPrefix = `${prefix}Agent-Feld "${path}": `;
+    if (!isAgentFieldPath(path)) throw new Error(`${fieldPrefix}Feldpfad ist nicht erlaubt.`);
+    if (!isRecord(field)) throw new Error(`${fieldPrefix}Review muss ein Objekt sein.`);
+    requireEnum(field, 'status', AGENT_FIELD_STATUSES, fieldPrefix);
+    requireEnum(field, 'origin', AGENT_FIELD_ORIGINS, fieldPrefix);
+    requireBoolean(field, 'required', fieldPrefix);
+    requireOptionalString(field, 'reason', fieldPrefix, 500);
+    requireOptionalString(field, 'reviewedAt', fieldPrefix, 80);
+    if (field.confidence !== undefined && field.confidence !== null) {
+      requireNumberInRange(field, 'confidence', 0, 1, fieldPrefix);
+    }
+    if (!Array.isArray(field.evidence) || field.evidence.length > 20) {
+      throw new Error(`${fieldPrefix}evidence muss ein Array mit maximal 20 Eintraegen sein.`);
+    }
+    field.evidence.forEach((evidence, index) => {
+      const evidencePrefix = `${fieldPrefix}Beleg [${index + 1}]: `;
+      if (!isRecord(evidence)) throw new Error(`${evidencePrefix}Beleg muss ein Objekt sein.`);
+      const sourceId = requireString(evidence, 'sourceId', evidencePrefix);
+      if (!sourceIds.has(sourceId)) throw new Error(`${evidencePrefix}Unbekannte Quelle "${sourceId}".`);
+      if (evidence.page !== undefined && evidence.page !== null) {
+        requireIntegerInRange(evidence, 'page', 1, 100_000, evidencePrefix);
+      }
+      requireOptionalString(evidence, 'locator', evidencePrefix, 500);
+      requireOptionalString(evidence, 'excerpt', evidencePrefix, 500);
+    });
+  }
+}
+
 export function validateScenario(s: unknown, index?: number): Scenario {
   const prefix = index !== undefined ? `Szenario [${index + 1}]: ` : '';
 
@@ -137,6 +222,9 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   }
   if (requireNumber(s, 'schemaVersion', prefix) !== SCHEMA_VERSION) {
     throw new Error(`${prefix}Nicht unterstützte Schema-Version.`);
+  }
+  if (s.agentReview !== undefined && s.agentReview !== null) {
+    validateAgentReview(s.agentReview, prefix);
   }
 
   if (s.sanierungen === undefined || s.sanierungen === null) {
@@ -180,6 +268,25 @@ export function validateScenario(s: unknown, index?: number): Scenario {
     objekt.bodenrichtwertProSqm = (kaufpreis * (bodenwertAnteilPct / 100)) / wohnflaeche;
   } else {
     requireNumberInRange(objekt, 'bodenrichtwertProSqm', 0, Number.MAX_SAFE_INTEGER, prefix);
+  }
+  const grundstuecksflaeche = objekt.grundstuecksflaeche === undefined || objekt.grundstuecksflaeche === null
+    ? (objekt.grundstuecksflaeche = 0)
+    : requireNumberInRange(objekt, 'grundstuecksflaeche', 0, Number.MAX_SAFE_INTEGER, prefix);
+  const hasMiteigentumsanteilZaehler = objekt.miteigentumsanteilZaehler !== undefined
+    && objekt.miteigentumsanteilZaehler !== null;
+  const hasMiteigentumsanteilNenner = objekt.miteigentumsanteilNenner !== undefined
+    && objekt.miteigentumsanteilNenner !== null;
+  if (grundstuecksflaeche > 0 && (!hasMiteigentumsanteilZaehler || !hasMiteigentumsanteilNenner)) {
+    throw new Error(`${prefix}Bei einer Grundstücksfläche müssen MEA – Ihr Anteil und MEA – Objekt gesamt angegeben sein.`);
+  }
+  const miteigentumsanteilZaehler = objekt.miteigentumsanteilZaehler === undefined || objekt.miteigentumsanteilZaehler === null
+    ? (objekt.miteigentumsanteilZaehler = 1)
+    : requireNumberInRange(objekt, 'miteigentumsanteilZaehler', 1, Number.MAX_SAFE_INTEGER, prefix);
+  const miteigentumsanteilNenner = objekt.miteigentumsanteilNenner === undefined || objekt.miteigentumsanteilNenner === null
+    ? (objekt.miteigentumsanteilNenner = 1)
+    : requireNumberInRange(objekt, 'miteigentumsanteilNenner', 1, Number.MAX_SAFE_INTEGER, prefix);
+  if (miteigentumsanteilZaehler > miteigentumsanteilNenner) {
+    throw new Error(`${prefix}miteigentumsanteilZaehler darf miteigentumsanteilNenner nicht überschreiten.`);
   }
   requireNumberInRange(objekt, 'sanierungskosten', 0, Number.MAX_SAFE_INTEGER, prefix);
 
@@ -274,7 +381,22 @@ export function validateScenario(s: unknown, index?: number): Scenario {
 
   const exit = requireSection(s, 'exit', prefix);
   requireIntegerInRange(exit, 'haltedauerJahre', 1, 40, prefix);
+  const hasVerkaufsnebenkostenMode = exit.verkaufsnebenkostenMode !== undefined
+    && exit.verkaufsnebenkostenMode !== null;
+  if (exit.verkaufsnebenkostenMode === undefined || exit.verkaufsnebenkostenMode === null) {
+    exit.verkaufsnebenkostenMode = 'percent';
+  } else {
+    requireEnum(exit, 'verkaufsnebenkostenMode', VERKAUFSNEBENKOSTEN_MODES, prefix);
+  }
   requireNumberInRange(exit, 'verkaufsnebenkostenPct', 0, 100, prefix);
+  if (exit.verkaufsnebenkostenAbsolut === undefined || exit.verkaufsnebenkostenAbsolut === null) {
+    if (hasVerkaufsnebenkostenMode && exit.verkaufsnebenkostenMode === 'absolute') {
+      throw new Error(`${prefix}verkaufsnebenkostenAbsolut fehlt für den Pauschalmodus.`);
+    }
+    exit.verkaufsnebenkostenAbsolut = 2500;
+  } else {
+    requireNumberInRange(exit, 'verkaufsnebenkostenAbsolut', 0, Number.MAX_SAFE_INTEGER, prefix);
+  }
   requireNumberInRange(exit, 'vorfaelligkeitPct', 0, 100, prefix);
 
   return s as unknown as Scenario;

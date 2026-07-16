@@ -5,7 +5,7 @@ import { calculateExit } from './exit';
 import { calculateTotalTax } from './tax';
 
 describe('Exit calculation Engine', () => {
-  it('calculates exit correctly for a standard scenario', () => {
+  it('calculates exit correctly and taxes a sale at exactly 10 years (§23 EStG)', () => {
     const scenario = createDefaultScenario({
       exit: {
         haltedauerJahre: 10,
@@ -17,20 +17,84 @@ describe('Exit calculation Engine', () => {
     const projection = runProjection(scenario);
     const exitRes = calculateExit(scenario, projection);
 
-    // Haltedauer is 10 years -> Spekulationssteuer must be 0
-    expect(exitRes.spekulationssteuer).toBe(0);
+    // §23 Abs. 1 Nr. 1 EStG: "nicht mehr als zehn Jahre" ist steuerpflichtig,
+    // d. h. auch der Exit in genau Jahr 10.
+    expect(exitRes.spekulationsGewinn).toBeGreaterThan(1000);
+    expect(exitRes.spekulationssteuer).toBeGreaterThan(0);
 
     // Verkaufspreis is the 10th year value (1.5% growth from 300,000)
     // Value at year 10 is 300,000 * (1.015)^10 = 348162
     expect(exitRes.verkaufspreis).toBeGreaterThan(340000);
     expect(exitRes.verkaufsnebenkosten).toBeCloseTo(exitRes.verkaufspreis * 0.03, 2);
-    
+
     // Netto-Verkaufserloes = verkaufspreis - verkaufsnebenkosten - restschuld - vorfaelligkeit
     expect(exitRes.nettoVerkaufserloes).toBeCloseTo(
       exitRes.verkaufspreis - exitRes.verkaufsnebenkosten - exitRes.restschuld - exitRes.vorfaelligkeitsEntschaedigung,
       2
     );
+    expect(exitRes.nettoVerkaufserloesNachSteuer).toBeCloseTo(
+      exitRes.nettoVerkaufserloes - exitRes.spekulationssteuer,
+      2
+    );
+  });
+
+  it('keeps the exit tax-free from 11 years holding period onward', () => {
+    const scenario = createDefaultScenario({
+      exit: {
+        haltedauerJahre: 11,
+        verkaufsnebenkostenPct: 3.0,
+        vorfaelligkeitPct: 0.0,
+      },
+    });
+
+    const exitRes = calculateExit(scenario, runProjection(scenario));
+
+    expect(exitRes.spekulationsGewinn).toBeGreaterThan(1000);
+    expect(exitRes.spekulationssteuer).toBe(0);
     expect(exitRes.nettoVerkaufserloesNachSteuer).toBe(exitRes.nettoVerkaufserloes);
+  });
+
+  it('uses the flat amount for sale costs in absolute mode', () => {
+    const scenario = createDefaultScenario({
+      exit: {
+        haltedauerJahre: 11,
+        verkaufsnebenkostenMode: 'absolute',
+        verkaufsnebenkostenPct: 3.0,
+        verkaufsnebenkostenAbsolut: 2500,
+        vorfaelligkeitPct: 0.0,
+      },
+    });
+
+    const exitRes = calculateExit(scenario, runProjection(scenario));
+
+    expect(exitRes.verkaufsnebenkosten).toBe(2500);
+    expect(exitRes.nettoVerkaufserloes).toBeCloseTo(
+      exitRes.verkaufspreis - 2500 - exitRes.restschuld,
+      2
+    );
+  });
+
+  it('deducts flat sale costs from a taxable speculation gain', () => {
+    const scenario = createDefaultScenario({
+      exit: {
+        haltedauerJahre: 10,
+        verkaufsnebenkostenMode: 'absolute',
+        verkaufsnebenkostenPct: 99,
+        verkaufsnebenkostenAbsolut: 2500,
+        vorfaelligkeitPct: 0,
+      },
+    });
+
+    const projection = runProjection(scenario);
+    const exitRes = calculateExit(scenario, projection);
+    const cumulativeAfa = projection.years.slice(0, 10).reduce((sum, year) => sum + year.afa, 0);
+
+    expect(exitRes.verkaufsnebenkosten).toBe(2500);
+    expect(exitRes.spekulationsGewinn).toBeCloseTo(
+      exitRes.verkaufspreis - 2500 - (scenario.objekt.kaufpreis + 31710) + cumulativeAfa,
+      2
+    );
+    expect(exitRes.spekulationssteuer).toBeGreaterThan(0);
   });
 
   it('verifies that Spekulationssteuer is applied for holding periods < 10 years', () => {

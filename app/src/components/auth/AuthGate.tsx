@@ -3,6 +3,7 @@ import { useAuthStore } from '../../store/authStore';
 import { LoginForm } from './LoginForm';
 import { RegisterForm } from './RegisterForm';
 import { ResetPasswordForm } from './ResetPasswordForm';
+import { OAuthConsent } from './OAuthConsent';
 import { App } from '../../app/App';
 
 export function AuthGate() {
@@ -12,6 +13,7 @@ export function AuthGate() {
   const profile = useAuthStore((s) => s.profile);
   const authView = useAuthStore((s) => s.authView);
   const signOut = useAuthStore((s) => s.signOut);
+  const authorizationId = new URLSearchParams(window.location.search).get('authorization_id');
 
   useEffect(() => {
     const unsubscribe = initialize();
@@ -93,6 +95,10 @@ export function AuthGate() {
         </div>
       </div>
     );
+  }
+
+  if (authorizationId) {
+    return <OAuthConsent authorizationId={authorizationId} />;
   }
 
   return <App />;

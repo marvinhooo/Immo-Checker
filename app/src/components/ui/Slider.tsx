@@ -1,4 +1,5 @@
 import { formatEUR, formatPercent, formatNumber } from '../../lib/format';
+import { useId } from 'react';
 
 interface SliderProps {
   id?: string;
@@ -23,6 +24,8 @@ export function Slider({
   suffix,
   className = '',
 }: SliderProps) {
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
   const getFormattedVal = (val: number) => {
     if (suffix === 'EUR') {
       return formatEUR(val, 0);
@@ -40,7 +43,7 @@ export function Slider({
     <div className={`flex flex-col space-y-1.5 ${className}`}>
       <div className="flex items-center justify-between">
         {label && (
-          <label htmlFor={id} className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <label htmlFor={inputId} className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             {label}
           </label>
         )}
@@ -50,7 +53,7 @@ export function Slider({
       </div>
       <div className="relative -my-3 flex items-center py-3">
         <input
-          id={id}
+          id={inputId}
           type="range"
           min={min}
           max={max}

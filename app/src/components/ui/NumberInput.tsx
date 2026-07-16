@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useId, useRef } from 'react';
 import { formatEUR, formatPercent, formatNumber, parseNumber } from '../../lib/format';
 
 interface NumberInputProps {
@@ -32,6 +32,8 @@ export function NumberInput({
   fractionDigits = 0,
   inputMode = 'decimal',
 }: NumberInputProps) {
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
   const [isFocused, setIsFocused] = useState(false);
   const [localValue, setLocalValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -105,7 +107,7 @@ export function NumberInput({
   return (
     <div className={`flex flex-col space-y-1.5 ${className}`}>
       {label && (
-        <label htmlFor={id} className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <label htmlFor={inputId} className="text-xs font-semibold uppercase tracking-wider text-slate-500">
           {label}
         </label>
       )}
@@ -113,7 +115,7 @@ export function NumberInput({
         <input
           ref={inputRef}
           type="text"
-          id={id}
+          id={inputId}
           value={localValue}
           onChange={handleChange}
           onFocus={handleFocus}

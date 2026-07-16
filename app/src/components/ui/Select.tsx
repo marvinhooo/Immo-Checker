@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 
 interface SelectOption {
   value: string | number;
@@ -20,16 +20,18 @@ export function Select({
   id,
   ...props
 }: SelectProps) {
+  const generatedId = useId();
+  const selectId = id ?? generatedId;
   return (
     <div className={`flex flex-col space-y-1.5 ${className}`}>
       {label && (
-        <label htmlFor={id} className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <label htmlFor={selectId} className="text-xs font-semibold uppercase tracking-wider text-slate-500">
           {label}
         </label>
       )}
       <div className="relative">
         <select
-          id={id}
+          id={selectId}
           className={`w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:outline-hidden appearance-none ${
             error ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : ''
           }`}

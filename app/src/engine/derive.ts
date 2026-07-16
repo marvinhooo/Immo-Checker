@@ -17,12 +17,30 @@ export function knkAmount(s: Scenario): number {
   return (s.objekt.kaufpreis * (grestPct + notarPct + maklerPct)) / 100;
 }
 
+/**
+ * Fuer den Bodenwert massgebliche Flaeche in m2: anteilige Grundstuecksflaeche
+ * (Grundstueck x Miteigentumsanteil laut Teilungserklaerung). Solange keine
+ * Grundstuecksflaeche erfasst ist, dient die Wohnflaeche als grobe Naeherung.
+ */
+export function bodenwertFlaeche(s: Scenario): number {
+  const { grundstuecksflaeche, miteigentumsanteilZaehler, miteigentumsanteilNenner, wohnflaeche } = s.objekt;
+  if (
+    grundstuecksflaeche > 0
+    && miteigentumsanteilZaehler > 0
+    && miteigentumsanteilNenner > 0
+    && miteigentumsanteilZaehler <= miteigentumsanteilNenner
+  ) {
+    return grundstuecksflaeche * (miteigentumsanteilZaehler / miteigentumsanteilNenner);
+  }
+  return wohnflaeche;
+}
+
 /** Effektiver Bodenwert in EUR aus Prozent oder Bodenrichtwert pro m2. */
 export function landValueAmount(s: Scenario): number {
   if (s.objekt.bodenwertMode === 'perSqm') {
     return Math.min(
       s.objekt.kaufpreis,
-      Math.max(0, s.objekt.bodenrichtwertProSqm * s.objekt.wohnflaeche)
+      Math.max(0, s.objekt.bodenrichtwertProSqm * bodenwertFlaeche(s))
     );
   }
   return (s.objekt.kaufpreis * Math.min(100, Math.max(0, s.objekt.bodenwertAnteilPct))) / 100;

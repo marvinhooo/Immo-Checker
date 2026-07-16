@@ -9,3 +9,13 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+interface Window {
+  /** Nur nach Login und bei bewusst aktiviertem Agent Edit Mode verfügbar. */
+  immoCheckerAgent?: {
+    getCapabilities: () => unknown;
+    listScenarios: () => Array<{ id: string; name: string }>;
+    getScenario: (scenarioId: string) => unknown;
+    stageDraft: (draft: unknown) => unknown;
+  };
+}

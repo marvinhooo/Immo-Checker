@@ -1,4 +1,6 @@
 
+import { useId } from 'react';
+
 interface ToggleProps {
   id?: string;
   label?: string;
@@ -16,11 +18,13 @@ export function Toggle({
   onChange,
   className = '',
 }: ToggleProps) {
+  const generatedId = useId();
+  const toggleId = id ?? generatedId;
   return (
     <div className={`flex items-center justify-between py-2 ${className}`}>
       <div className="flex flex-col space-y-0.5 pr-4">
         {label && (
-          <label htmlFor={id} className="text-sm font-semibold text-slate-700">
+          <label htmlFor={toggleId} className="text-sm font-semibold text-slate-700">
             {label}
           </label>
         )}
@@ -29,7 +33,7 @@ export function Toggle({
         )}
       </div>
       <button
-        id={id}
+        id={toggleId}
         type="button"
         role="switch"
         aria-checked={checked}

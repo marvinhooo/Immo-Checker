@@ -76,20 +76,20 @@ describe('Holding-period analysis (Story 13)', () => {
     expect(Math.abs(row.ekRenditeGesamteinsatzPct)).toBeLessThan(Math.abs(row.ekRenditeGesamtPct));
   });
 
-  it('applies Spekulationssteuer before year 10 and not at/after year 10', () => {
+  it('applies Spekulationssteuer up to and including year 10, tax-free from year 11', () => {
     const scenario = createDefaultScenario({
       exit: { haltedauerJahre: 15, verkaufsnebenkostenPct: 3, vorfaelligkeitPct: 0 },
     });
     const analysis = analyzeHoldingPeriods(scenario);
 
-    const year9 = analysis.years.find((y) => y.jahr === 9)!;
     const year10 = analysis.years.find((y) => y.jahr === 10)!;
+    const year11 = analysis.years.find((y) => y.jahr === 11)!;
 
-    expect(year9.spekulationssteuerPflichtig).toBe(true);
-    expect(year9.spekulationssteuer).toBeGreaterThan(0);
+    expect(year10.spekulationssteuerPflichtig).toBe(true);
+    expect(year10.spekulationssteuer).toBeGreaterThan(0);
 
-    expect(year10.spekulationssteuerPflichtig).toBe(false);
-    expect(year10.spekulationssteuer).toBe(0);
+    expect(year11.spekulationssteuerPflichtig).toBe(false);
+    expect(year11.spekulationssteuer).toBe(0);
   });
 
   it('reports EK profitability both annualized (IRR + CAGR) and total (multiple)', () => {
@@ -108,6 +108,6 @@ describe('Holding-period analysis (Story 13)', () => {
     }
 
     expect(analysis.besteExitJahrNachIrr).not.toBeNull();
-    expect(analysis.steuerfreiAbJahr).toBe(10);
+    expect(analysis.steuerfreiAbJahr).toBe(11);
   });
 });

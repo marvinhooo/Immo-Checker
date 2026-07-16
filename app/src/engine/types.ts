@@ -13,6 +13,7 @@ export type ObjektTyp = 'bestand' | 'neubau' | 'denkmal';
 export type AfaModus = 'linear' | 'degressiv' | 'sonder7b' | 'denkmal7i';
 
 export type BodenwertMode = 'percent' | 'perSqm';
+export type VerkaufsnebenkostenMode = 'percent' | 'absolute';
 export type EquityMode = 'percent' | 'absolute';
 export type RentMode = 'perMonth' | 'perYear' | 'perSqm';
 export type MaintenanceMode = 'perSqm' | 'percentRent' | 'absolute';
@@ -57,7 +58,10 @@ export interface ObjektInput {
   objektTyp: ObjektTyp;
   bodenwertMode: BodenwertMode; // Prozent direkt oder Bodenrichtwert EUR/m2
   bodenwertAnteilPct: number; // % des Kaufpreises auf Grund und Boden (NICHT abschreibbar)
-  bodenrichtwertProSqm: number; // EUR/m2, wird ueber Wohnflaeche in % des Kaufpreises umgerechnet
+  bodenrichtwertProSqm: number; // EUR/m2, bezogen auf die anteilige Grundstuecksflaeche
+  grundstuecksflaeche: number; // m2 Gesamtgrundstueck laut Grundbuch/Teilungserklaerung; 0 = unbekannt -> Naeherung ueber Wohnflaeche
+  miteigentumsanteilZaehler: number; // MEA laut Teilungserklaerung, z. B. 57 (bei 57/1000)
+  miteigentumsanteilNenner: number; // MEA-Nenner, z. B. 1000; 1/1 = Alleineigentum am Grundstueck
   sanierungskosten: number; // EUR, Denkmal-/Modernisierungs-Topf (§7i)
 }
 
@@ -129,8 +133,52 @@ export interface WertentwicklungInput {
 
 export interface ExitInput {
   haltedauerJahre: number;
+  verkaufsnebenkostenMode: VerkaufsnebenkostenMode; // % vom Verkaufspreis oder EUR-Pauschale
   verkaufsnebenkostenPct: number; // % vom Verkaufspreis (Makler etc.)
+  verkaufsnebenkostenAbsolut: number; // EUR-Pauschale (verkaufsnebenkostenMode = 'absolute')
   vorfaelligkeitPct: number; // % auf Restschuld bei Verkauf vor Zinsbindungsende
+}
+
+export type AgentSourceKind = 'pdf' | 'web' | 'api' | 'text' | 'manual';
+export type AgentFieldOrigin = 'extracted' | 'inferred' | 'assumption' | 'derived' | 'user';
+export type AgentFieldStatus = 'missing' | 'uncertain' | 'confirmed' | 'not_applicable' | 'conflict';
+
+export interface AgentSource {
+  id: string;
+  kind: AgentSourceKind;
+  label: string;
+  url?: string;
+  sha256?: string;
+  retrievedAt?: string;
+}
+
+export interface AgentEvidence {
+  sourceId: string;
+  page?: number;
+  locator?: string;
+  excerpt?: string;
+}
+
+export interface AgentFieldReview {
+  status: AgentFieldStatus;
+  origin: AgentFieldOrigin;
+  required: boolean;
+  confidence?: number;
+  reason?: string;
+  evidence: AgentEvidence[];
+  reviewedAt?: string;
+}
+
+/**
+ * Review-Metadaten eines Agenten-Entwurfs. Werte und Review-Status bleiben getrennt:
+ * Ein plausibler Default kann rechnerisch genutzt werden und trotzdem als fehlend markiert sein.
+ */
+export interface AgentReview {
+  version: 1;
+  updatedAt: string;
+  sources: AgentSource[];
+  fields: Record<string, AgentFieldReview>;
+  warnings?: string[];
 }
 
 export interface Scenario {
@@ -148,4 +196,5 @@ export interface Scenario {
   afa: AfaInput;
   wertentwicklung: WertentwicklungInput;
   exit: ExitInput;
+  agentReview?: AgentReview;
 }

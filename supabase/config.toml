@@ -1,0 +1,4 @@
+# Die Edge Function prueft OAuth-JWTs selbst, damit die oeffentliche
+# Protected-Resource-Metadata-Route und RFC-konforme 401-Antworten erreichbar sind.
+[functions.agent-mcp]
+verify_jwt = false

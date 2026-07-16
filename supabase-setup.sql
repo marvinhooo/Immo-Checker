@@ -1,6 +1,8 @@
 -- =====================================================
 -- Immo-Checker Supabase Setup
 -- Dieses SQL im Supabase SQL Editor ausführen
+-- Fuer die optionale accountgebundene Agent-/MCP-Verbindung danach zusaetzlich
+-- supabase-agent-mcp.sql ausfuehren und dessen OAuth-Setup abschliessen.
 -- =====================================================
 
 -- 1. Tabellen
@@ -55,16 +57,26 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- 3. Helper: Admin-Check ohne RLS-Rekursion
+-- 3. Helper: OAuth-Tokens duerfen niemals Admin-Rechte erben. Die Definition
+-- steht absichtlich vor is_admin(), damit ein frisches Setup order-safe ist.
+CREATE OR REPLACE FUNCTION public.is_direct_web_session()
+RETURNS BOOLEAN AS $$
+  SELECT auth.uid() IS NOT NULL
+    AND NULLIF(auth.jwt() ->> 'client_id', '') IS NULL
+    AND COALESCE(auth.jwt() -> 'immo_checker_mcp', 'false'::jsonb) <> 'true'::jsonb;
+$$ LANGUAGE sql STABLE SET search_path = public, auth, pg_temp;
+
+-- Admin-Check ohne RLS-Rekursion; nur direkte Web-Sessions sind zugelassen.
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN AS $$
-  SELECT EXISTS (
+  SELECT public.is_direct_web_session()
+    AND EXISTS (
     SELECT 1
     FROM public.profiles profile
     WHERE profile.id = auth.uid()
       AND profile.is_admin = true
   );
-$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public;
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public, auth, pg_temp;
 
 -- 4. RLS aktivieren
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -73,13 +85,13 @@ ALTER TABLE public.scenarios ENABLE ROW LEVEL SECURITY;
 
 -- 5. RLS Policies: Profiles
 CREATE POLICY "Users read own profile" ON public.profiles
-  FOR SELECT USING (auth.uid() = id);
+  FOR SELECT USING (auth.uid() = id AND public.is_direct_web_session());
 
 CREATE POLICY "Admins read all profiles" ON public.profiles
   FOR SELECT USING (public.is_admin());
 
 CREATE POLICY "Admins update profiles" ON public.profiles
-  FOR UPDATE USING (public.is_admin());
+  FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());
 
 -- 6. RLS Policies: App Settings
 CREATE POLICY "Admins read app settings" ON public.app_settings

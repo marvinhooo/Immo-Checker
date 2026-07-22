@@ -171,11 +171,18 @@ const AGENT_FIELD_TYPES = {
   "/miete/mietspiegel/mittelwertProSqm": "number",
   "/miete/mietspiegel/obererSpannwertProSqm": "number",
   "/miete/steigerungen": "array",
+  "/kosten/kostenErfassungMode": "enum",
+  "/kosten/umlagefaehigeKostenProJahr": "number",
+  "/kosten/nichtUmlagefaehigeKostenProJahr": "number",
+  "/kosten/wegRuecklageProJahr": "number",
+  "/kosten/ruecklagenVerwendungPct": "number",
+  "/kosten/ruecklagenVerzoegerungJahre": "number",
   "/kosten/maintenanceMode": "enum",
   "/kosten/instandhaltungProSqm": "number",
   "/kosten/instandhaltungPctRent": "number",
   "/kosten/instandhaltungAbsolut": "number",
   "/kosten/ruecklagenAnteilPct": "number",
+  "/kosten/ruecklagenRestwertPct": "number",
   "/kosten/verwaltungProJahr": "number",
   "/kosten/sonstigeKostenProJahr": "number",
   "/kosten/kostensteigerungPctPa": "number",
@@ -221,6 +228,7 @@ const FIELD_ENUMS: Partial<
   "/objekt/bodenwertMode": ["percent", "perSqm"],
   "/finanzierung/equityMode": ["percent", "absolute"],
   "/miete/rentMode": ["perMonth", "perYear", "perSqm"],
+  "/kosten/kostenErfassungMode": ["detailliert", "wirtschaftsplan"],
   "/kosten/maintenanceMode": ["perSqm", "percentRent", "absolute"],
   "/steuer/taxMode": ["income", "marginalRate"],
   "/steuer/veranlagung": ["single", "splitting"],
@@ -242,6 +250,8 @@ const PERCENT_PATHS = new Set<string>([
   "/miete/leerstandPct",
   "/kosten/instandhaltungPctRent",
   "/kosten/ruecklagenAnteilPct",
+  "/kosten/ruecklagenRestwertPct",
+  "/kosten/ruecklagenVerwendungPct",
   "/kosten/kostensteigerungPctPa",
   "/steuer/grenzsteuersatzPct",
   "/steuer/kirchensteuerPct",
@@ -555,6 +565,11 @@ function validateNumber(path: string, value: number): void {
     integer = true;
   }
   if (path === "/exit/haltedauerJahre") {
+    min = 1;
+    max = 40;
+    integer = true;
+  }
+  if (path === "/kosten/ruecklagenVerzoegerungJahre") {
     min = 1;
     max = 40;
     integer = true;

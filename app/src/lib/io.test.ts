@@ -26,7 +26,7 @@ describe('io', () => {
     expect(single.miete.mietspiegel).toEqual(sc.miete.mietspiegel);
   });
 
-  it('should preserve absolute exit costs in a schema-v2 roundtrip', () => {
+  it('should preserve absolute exit costs in a current-schema roundtrip', () => {
     const scenario = createDefaultScenario();
     scenario.exit.verkaufsnebenkostenMode = 'absolute';
     scenario.exit.verkaufsnebenkostenAbsolut = 4200;
@@ -36,6 +36,30 @@ describe('io', () => {
     expect(imported.schemaVersion).toBe(SCHEMA_VERSION);
     expect(imported.exit.verkaufsnebenkostenMode).toBe('absolute');
     expect(imported.exit.verkaufsnebenkostenAbsolut).toBe(4200);
+  });
+
+  it('should preserve Wirtschaftsplan inputs and reserve assumptions in a roundtrip', () => {
+    const scenario = createDefaultScenario({
+      kosten: {
+        kostenErfassungMode: 'wirtschaftsplan',
+        umlagefaehigeKostenProJahr: 1194.99,
+        nichtUmlagefaehigeKostenProJahr: 554.06,
+        wegRuecklageProJahr: 456,
+        ruecklagenVerwendungPct: 50,
+        ruecklagenVerzoegerungJahre: 5,
+      },
+    });
+
+    const imported = importScenarios(exportScenario(scenario)) as Scenario;
+
+    expect(imported.kosten).toMatchObject({
+      kostenErfassungMode: 'wirtschaftsplan',
+      umlagefaehigeKostenProJahr: 1194.99,
+      nichtUmlagefaehigeKostenProJahr: 554.06,
+      wegRuecklageProJahr: 456,
+      ruecklagenVerwendungPct: 50,
+      ruecklagenVerzoegerungJahre: 5,
+    });
   });
 
   it('should export and import multiple scenarios correctly in bulk format', () => {
@@ -177,8 +201,8 @@ describe('io', () => {
     const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
 
     expect(imported.objekt.bodenwertMode).toBe('percent');
-    expect(imported.objekt.bodenwertAnteilPct).toBe(35);
-    expect(imported.objekt.bodenrichtwertProSqm).toBeCloseTo(1500, 5);
+    expect(imported.objekt.bodenwertAnteilPct).toBe(30);
+    expect(imported.objekt.bodenrichtwertProSqm).toBeCloseTo(90000 / 70, 5);
   });
 
   it('should import old scenarios without yearly cold rent and sync rent fields from the selected mode', () => {
@@ -386,8 +410,8 @@ describe('io', () => {
     const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
 
     expect(imported.objekt.grundstuecksflaeche).toBe(0);
-    expect(imported.objekt.miteigentumsanteilZaehler).toBe(1);
-    expect(imported.objekt.miteigentumsanteilNenner).toBe(1);
+    expect(imported.objekt.miteigentumsanteilZaehler).toBe(0);
+    expect(imported.objekt.miteigentumsanteilNenner).toBe(0);
     expect(imported.exit.verkaufsnebenkostenMode).toBe('percent');
     expect(imported.exit.verkaufsnebenkostenAbsolut).toBe(2500);
     expect(imported.schemaVersion).toBe(SCHEMA_VERSION);
@@ -486,6 +510,30 @@ describe('io', () => {
     expect(() => importScenarios(JSON.stringify(partialYearlyRent))).toThrow(
       'Unvollständige Jahresmiet-Angaben in Schema-Version 1.',
     );
+  });
+
+  it('migrates schema-v2 costs to the unchanged detailed mode with conservative defaults', () => {
+    const previous = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    previous.schemaVersion = 2;
+    const kosten = previous.kosten as Record<string, unknown>;
+    delete kosten.kostenErfassungMode;
+    delete kosten.umlagefaehigeKostenProJahr;
+    delete kosten.nichtUmlagefaehigeKostenProJahr;
+    delete kosten.wegRuecklageProJahr;
+    delete kosten.ruecklagenVerwendungPct;
+    delete kosten.ruecklagenVerzoegerungJahre;
+
+    const imported = importScenarios(JSON.stringify(previous)) as Scenario;
+
+    expect(imported.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(imported.kosten).toMatchObject({
+      kostenErfassungMode: 'detailliert',
+      umlagefaehigeKostenProJahr: 0,
+      nichtUmlagefaehigeKostenProJahr: 0,
+      wegRuecklageProJahr: 0,
+      ruecklagenVerwendungPct: 50,
+      ruecklagenVerzoegerungJahre: 5,
+    });
   });
 
   it('should migrate a version-matched schema-v1 bulk export and reject mismatches', () => {
@@ -608,6 +656,48 @@ describe('io', () => {
     );
   });
 
+  it('should default a missing ruecklagenRestwertPct to conservative 0 on schema-v2 import', () => {
+    const sc = createDefaultScenario();
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const kosten = parsed.kosten as Record<string, unknown>;
+    delete kosten.ruecklagenRestwertPct;
+
+    const imported = importScenarios(JSON.stringify(parsed)) as Scenario;
+
+    expect(imported.kosten.ruecklagenRestwertPct).toBe(0);
+  });
+
+  it('should reject a ruecklagenRestwertPct outside 0-100', () => {
+    const sc = createDefaultScenario();
+    const parsed = JSON.parse(exportScenario(sc)) as Record<string, unknown>;
+    const kosten = parsed.kosten as Record<string, unknown>;
+    kosten.ruecklagenRestwertPct = 101;
+
+    expect(() => importScenarios(JSON.stringify(parsed))).toThrow(
+      'ruecklagenRestwertPct muss eine Zahl zwischen 0 und 100 sein.'
+    );
+  });
+
+  it('should reject invalid Wirtschaftsplan mode and reserve assumptions', () => {
+    const invalidMode = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    (invalidMode.kosten as Record<string, unknown>).kostenErfassungMode = 'pauschal';
+    expect(() => importScenarios(JSON.stringify(invalidMode))).toThrow(
+      'kostenErfassungMode hat einen ungültigen Wert.',
+    );
+
+    const invalidUsage = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    (invalidUsage.kosten as Record<string, unknown>).ruecklagenVerwendungPct = 101;
+    expect(() => importScenarios(JSON.stringify(invalidUsage))).toThrow(
+      'ruecklagenVerwendungPct muss eine Zahl zwischen 0 und 100 sein.',
+    );
+
+    const invalidDelay = JSON.parse(exportScenario(createDefaultScenario())) as Record<string, unknown>;
+    (invalidDelay.kosten as Record<string, unknown>).ruecklagenVerzoegerungJahre = 5.5;
+    expect(() => importScenarios(JSON.stringify(invalidDelay))).toThrow(
+      'ruecklagenVerzoegerungJahre muss eine ganze Zahl zwischen 1 und 40 sein.',
+    );
+  });
+
   it('should accept step rules with and without wirksamAbMonat and reject invalid months', () => {
     const sc = createDefaultScenario({
       miete: {
@@ -654,8 +744,13 @@ describe('io', () => {
         instandhaltung: 1500,
         verwaltung: 300,
         sonstigeKosten: 100,
+        umlagefaehigeKosten: 0,
+        leerstandsbedingteUmlagekosten: 0,
+        nichtUmlagefaehigeKosten: 1650,
         bewirtschaftungskosten: 1900,
         ruecklagenZufuehrung: 250,
+        ruecklagenEntnahme: 0,
+        ruecklagenWerbungskosten: 0,
         zins: 5000,
         tilgung: 3000,
         sondertilgung: 0,
@@ -679,6 +774,7 @@ describe('io', () => {
         kumulierterCashflowNachSteuer: 1542,
         kumulierteSteuerersparnis: 42,
         kumulierteSondertilgung: 0,
+        kumulierteRuecklage: 250,
         kumuliertesEigenkapital: 100000,
       },
     ];
@@ -692,9 +788,11 @@ describe('io', () => {
       'Sanierungsauszahlung (€);Sanierungs-Werbungskosten (€);Objekt-AfA (€);Sanierungs-AfA (€);AfA gesamt (€)',
     );
     // Should contain formatted numbers with German comma separator
-    expect(csv).toContain('davon Rücklage + kalk. Reserve (nicht sofort abziehbar) (€)');
+    expect(csv).toContain('WEG-Rücklagenzuführung / Reserveanteil (nicht sofort abziehbar) (€)');
+    expect(csv).toContain('Erwartete WEG-Rücklagenverwendung (kein zweiter Cash-out) (€)');
+    expect(csv).toContain('Rücklage kumuliert (nach modellierter Verwendung) (€)');
     expect(csv).toContain(
-      '1;12000,00;11400,00;600,00;1500,00;300,00;100,00;1900,00;250,00;5000,00;3000,00;0,00;8000,00;10000,00;2500,00;4000,00;500,00;4500,00;-100,00;-42,00;1500,00;1542,00;125,00;128,50;305000,00;197000,00;108000,00;64,59;1,43',
+      '1;12000,00;11400,00;600,00;1500,00;300,00;100,00;0,00;0,00;1650,00;1900,00;250,00;0,00;0,00;250,00;5000,00;3000,00;0,00;8000,00;10000,00;2500,00;4000,00;500,00;4500,00;-100,00;-42,00;1500,00;1542,00;125,00;128,50;305000,00;197000,00;108000,00;64,59;1,43',
     );
   });
 });

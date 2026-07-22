@@ -322,10 +322,14 @@ describe('Projection Engine', () => {
     });
 
     const baseYear1 = runProjection(base, 1).years[0];
-    const year1 = runProjection(withRuecklage, 1).years[0];
+    const ruecklagenProjection = runProjection(withRuecklage, 2);
+    const year1 = ruecklagenProjection.years[0];
+    const year2 = ruecklagenProjection.years[1];
 
     // 40 % von 1000 EUR Instandhaltung sind Ruecklagenzufuehrung
     expect(year1.ruecklagenZufuehrung).toBeCloseTo(400, 2);
+    expect(year1.kumulierteRuecklage).toBeCloseTo(400, 2);
+    expect(year2.kumulierteRuecklage).toBeCloseTo(800, 2);
     // Cash-out unveraendert (volle Bewirtschaftungskosten fliessen ab)
     expect(year1.cashflowVorSteuer).toBeCloseTo(baseYear1.cashflowVorSteuer, 2);
     expect(year1.bewirtschaftungskosten).toBeCloseTo(baseYear1.bewirtschaftungskosten, 2);
@@ -334,6 +338,66 @@ describe('Projection Engine', () => {
     // Steuereffekt entsprechend hoeher (30 % Grenzsteuersatz)
     expect(year1.steuereffekt).toBeCloseTo(baseYear1.steuereffekt + 120, 2);
     expect(year1.cashflowNachSteuer).toBeCloseTo(baseYear1.cashflowNachSteuer - 120, 2);
+  });
+
+  it('uses 50 percent of each WEG contribution after five years without a second cash-out', () => {
+    const scenario = createDefaultScenario({
+      objekt: {
+        kaufpreis: 100000,
+        wohnflaeche: 50,
+        bodenwertMode: 'percent',
+        bodenwertAnteilPct: 30,
+      },
+      finanzierung: {
+        equityMode: 'absolute',
+        equityAbsolute: 100000,
+        sollzinsPct: 0,
+        tilgungPct: 0,
+        sondertilgungProJahr: 0,
+      },
+      miete: {
+        rentMode: 'perMonth',
+        kaltmieteProMonat: 1000,
+        kaltmieteProJahr: 12000,
+        kaltmieteProSqm: 20,
+        leerstandPct: 0,
+        steigerungen: [],
+      },
+      kosten: {
+        kostenErfassungMode: 'wirtschaftsplan',
+        umlagefaehigeKostenProJahr: 0,
+        nichtUmlagefaehigeKostenProJahr: 0,
+        wegRuecklageProJahr: 1000,
+        ruecklagenVerwendungPct: 50,
+        ruecklagenVerzoegerungJahre: 5,
+        kostensteigerungPctPa: 0,
+      },
+      steuer: {
+        taxMode: 'marginalRate',
+        grenzsteuersatzPct: 30,
+        soli: false,
+        kirchensteuerPct: 0,
+      },
+      wertentwicklung: { szenario: [] },
+    });
+
+    const result = runProjection(scenario, 7);
+    expect(result.years.slice(0, 5).map((year) => year.ruecklagenEntnahme)).toEqual([0, 0, 0, 0, 0]);
+    expect(result.years[5].ruecklagenEntnahme).toBe(500);
+    expect(result.years[6].ruecklagenEntnahme).toBe(500);
+    expect(result.years[5].ruecklagenWerbungskosten).toBe(500);
+    expect(result.years.map((year) => year.kumulierteRuecklage)).toEqual([
+      1000, 2000, 3000, 4000, 5000, 5500, 6000,
+    ]);
+
+    // Die Verwendung wurde bereits durch die Zufuehrung bezahlt und ist kein zweiter Cash-Abfluss.
+    expect(result.years[5].cashflowVorSteuer).toBeCloseTo(result.years[4].cashflowVorSteuer, 6);
+    expect(result.years[5].vvErgebnis).toBeCloseTo(result.years[4].vvErgebnis - 500, 6);
+    expect(result.years[5].cashflowNachSteuer).toBeCloseTo(result.years[4].cashflowNachSteuer + 150, 6);
+
+    const tenYears = runProjection(scenario, 10).years;
+    const fifteenYears = runProjection(scenario, 15).years;
+    expect(fifteenYears.slice(0, 10)).toEqual(tenYears);
   });
 
   it('should match a known snapshot of calculations for reproducibility', () => {

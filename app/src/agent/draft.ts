@@ -1,6 +1,5 @@
 import { GREST_BY_BUNDESLAND, linearAfaRateForYear } from '../engine/constants';
 import { createDefaultScenario } from '../engine/defaults';
-import { bodenwertFlaeche } from '../engine/derive';
 import type {
   AgentEvidence,
   AgentFieldOrigin,
@@ -430,6 +429,28 @@ function normalizeDependentFields(scenario: Scenario, supplied: Set<string>): Se
       : 0;
   }
 
+  const suppliedWirtschaftsplanCosts = [
+    '/kosten/umlagefaehigeKostenProJahr',
+    '/kosten/nichtUmlagefaehigeKostenProJahr',
+    '/kosten/wegRuecklageProJahr',
+  ].some((path) => supplied.has(path));
+  const suppliedDetailedCosts = [
+    '/kosten/maintenanceMode',
+    '/kosten/instandhaltungProSqm',
+    '/kosten/instandhaltungPctRent',
+    '/kosten/instandhaltungAbsolut',
+    '/kosten/ruecklagenAnteilPct',
+    '/kosten/verwaltungProJahr',
+    '/kosten/sonstigeKostenProJahr',
+  ].some((path) => supplied.has(path));
+  if (!supplied.has('/kosten/kostenErfassungMode') && suppliedWirtschaftsplanCosts) {
+    if (suppliedDetailedCosts) {
+      throw new Error('Wirtschaftsplan- und Detailkosten benoetigen eine explizite Operation fuer /kosten/kostenErfassungMode.');
+    }
+    scenario.kosten.kostenErfassungMode = 'wirtschaftsplan';
+    derived.add('/kosten/kostenErfassungMode');
+  }
+
   const suppliedBodenwerte = ['/objekt/bodenwertAnteilPct', '/objekt/bodenrichtwertProSqm']
     .filter((path) => supplied.has(path));
   if (!supplied.has('/objekt/bodenwertMode') && suppliedBodenwerte.length === 1) {
@@ -438,31 +459,9 @@ function normalizeDependentFields(scenario: Scenario, supplied: Set<string>): Se
   } else if (!supplied.has('/objekt/bodenwertMode') && suppliedBodenwerte.length > 1) {
     throw new Error('Mehrere Bodenwerte benoetigen eine explizite Operation fuer /objekt/bodenwertMode.');
   }
-  if (
-    supplied.has('/objekt/miteigentumsanteilZaehler')
-    && !supplied.has('/objekt/miteigentumsanteilNenner')
-    && scenario.objekt.miteigentumsanteilZaehler > scenario.objekt.miteigentumsanteilNenner
-  ) {
-    // Der fehlende Nenner bleibt im Review offen; intern halten wir den partiellen
-    // Entwurf dennoch valide, bis der Benutzer den echten Gesamtanteil eintraegt.
-    scenario.objekt.miteigentumsanteilNenner = scenario.objekt.miteigentumsanteilZaehler;
-  }
-  const effectivePlotArea = bodenwertFlaeche(scenario);
-  if (scenario.objekt.bodenwertMode === 'percent') {
-    scenario.objekt.bodenrichtwertProSqm = effectivePlotArea > 0
-      ? (scenario.objekt.kaufpreis * (scenario.objekt.bodenwertAnteilPct / 100)) / effectivePlotArea
-      : 0;
-  } else {
-    scenario.objekt.bodenwertAnteilPct = scenario.objekt.kaufpreis > 0
-      ? Math.min(
-          100,
-          Math.max(
-            0,
-            ((scenario.objekt.bodenrichtwertProSqm * effectivePlotArea) / scenario.objekt.kaufpreis) * 100
-          )
-        )
-      : 0;
-  }
+  // Prozentwert, Bodenrichtwert, Grundstuecksflaeche und MEA bleiben unabhaengige
+  // Rohangaben. Der aktive Modus entscheidet nur, welche Werte die Engine nutzt;
+  // unvollstaendige Angaben duerfen bereits gelieferte Werte nicht ueberschreiben.
 
   const suppliedExitCosts = [
     '/exit/verkaufsnebenkostenPct',

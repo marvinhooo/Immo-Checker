@@ -67,7 +67,7 @@ Diese Werte sind Default-Annahmen und MUESSEN in der UI konfigurierbar/ueberschr
 - Hinweis: Denkmal-AfA erfordert Behoerden-Bescheinigung; Modellierung als "Sanierungskosten-Topf" mit eigenem Abschreibungsplan.
 
 ### Steuerwirkung (der eigentliche "Steuervorteil")
-- V&V-Ergebnis = Mieteinnahmen (kalt) - Werbungskosten (Schuldzinsen, AfA, nicht-umlagefaehige Bewirtschaftungskosten, Instandhaltung, Verwaltung). TILGUNG ist NICHT abziehbar (nur Zinsen).
+- V&V-Ergebnis = Kaltmiete nach Leerstand - Werbungskosten. Im Modell umfassen diese insbesondere Schuldzinsen, AfA, sofort abziehbare nicht umlagefaehige Kosten, leerstandsbedingt nicht erstattete umlagefaehige Kosten und modellierte WEG-Verwendungen. TILGUNG und die blosse WEG-Ruecklagenzufuehrung sind NICHT abziehbar.
 - Ein V&V-Verlust mindert das zu versteuernde Einkommen -> Steuererstattung. Der Vorteil skaliert mit dem persoenlichen Grenzsteuersatz ("mehr Gehalt -> mehr Steuervorteil"): korrekt.
 - Beste Modellierung: Steuereffekt = ESt(zvE inkl. V&V) - ESt(zvE ohne V&V) ueber den Einkommensteuertarif §32a EStG (erfasst Progression); tarifliche ESt wird auf volle EUR abgerundet. Vereinfachter Modus: flacher Grenzsteuersatz als Eingabe.
 - ESt-Tarif 2026 (Single): Grundfreibetrag 12.348 EUR; Eingangssatz 14 %; 42 % ab ~69.879 EUR; 45 % (Reichensteuer) ab 277.826 EUR. Splitting (Verheiratet) als Option.
@@ -79,7 +79,7 @@ Diese Werte sind Default-Annahmen und MUESSEN in der UI konfigurierbar/ueberschr
 
 ### Kennzahlen, die ein "lohnt sich?"-Urteil ermoeglichen
 - Bruttomietrendite = Jahreskaltmiete / Kaufpreis.
-- Nettomietrendite = (Jahreskaltmiete - nicht-umlagefaehige Bewirtschaftungskosten) / (Kaufpreis + KNK).
+- Nettomietrendite = (Netto-Kaltmiete nach modelliertem Leerstand - vollstaendiger Eigentuemer-Cashout des aktiven Kostenmodus) / (Kaufpreis + KNK). Im Wirtschaftsplanmodus umfasst der Cashout N + W + den leerstandsbedingt nicht erstatteten Anteil von U.
 - Kaufpreisfaktor (Vervielfaeltiger) = Kaufpreis / Jahreskaltmiete.
 - Cashflow vor/nach Steuer p. a. (inkl. Tilgung als Ausgabe), monatliche Liquiditaet.
 - Cash-on-Cash-Rendite = Netto-Cashflow / eingesetztes Eigenkapital.
@@ -99,13 +99,22 @@ Allgemeine Arbeitsregeln:
 - Schreibe sauberen, testbaren Code mit klaren Schnittstellen. Rechenkern bleibt UI-frei und deterministisch.
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
-## Handover Naechster Thread (Stand: 2026-07-17)
-- Implementiert, lokal verifiziert und auf `main` veroeffentlicht: Stories 0 bis 13 sowie die nachtraeglichen Produkt-Erweiterungen inklusive versioniertem Agent-Draft, Agent Edit Mode, accountgebundener Browser-Agent-API und Remote-MCP mit Supabase-OAuth. Die Abschlussreview-Korrekturen fuer SQL-Migration, OAuth-Herkunftsmarker, Cloud-Sync und Szenarioformat 2 sind enthalten; `SQL_CHECKSUM.md` dokumentiert den fuer Staging vorgesehenen SQL-Stand. `npm run lint`, `npm run typecheck`, `npm run test` und `npm run build` sind gruen (246/246 Tests).
+## Handover Naechster Thread (Stand: 2026-07-22)
+- Implementiert und lokal verifiziert: Stories 0 bis 13 sowie die nachtraeglichen Produkt-Erweiterungen inklusive versioniertem Agent-Draft, Agent Edit Mode, accountgebundener Browser-Agent-API, Remote-MCP mit Supabase-OAuth, konservativem 30-%-Bodenfallback, direktem Wirtschaftsplan-Kostenmodus und kohortenbasierter WEG-Ruecklagenverwendung. Das aktuelle Szenarioformat ist Version 3; Version 1 und 2 werden additiv migriert. `SQL_CHECKSUM.md` dokumentiert weiterhin den fuer Staging vorgesehenen SQL-Stand; den aktuellen Commit-/Pushstatus zeigt Git.
 - Offener Fokus: Keine offene Code-Story. Fuer den produktiven Remote-Betrieb bleiben SQL-Migration, OAuth-Server/Hook, kanonisches Metadata-Routing, Gateway-Rate-Limits und ein echter OAuth-/MCP-End-to-End-Test auszufuehren.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
   2. Bei Deployment-Auftrag mit `supabase/functions/agent-mcp/README.md` beginnen und erst nach erfolgreichem Live-Isolationstest aktiv schalten.
 - Verify-Setup: `cd app && npm run lint && npm run typecheck && npm run build && npm run test`.
+
+## Wirtschaftsplan, Bodenfallback und WEG-Ruecklage (Stand: 2026-07-22)
+
+- Im Bodenrichtwertmodus verwendet die Engine die exakte Formel nur bei vollstaendigem Bodenrichtwert, Gesamtgrundstueck und gueltigem MEA (Miteigentumsanteil). Solange mindestens eine Angabe fehlt, gilt konservativ 30 % Bodenanteil am Kaufpreis. Bodenrichtwert, Prozentwert, Grundstueck und MEA bleiben als unabhaengige Rohwerte gespeichert; Moduswechsel oder der Fallback ueberschreiben sie nicht. Sobald die Angaben vollstaendig sind, greift automatisch wieder die exakte Rechnung.
+- Der neue Kostenmodus `wirtschaftsplan` uebernimmt drei Jahressummen direkt: umlagefaehige Kosten, nicht umlagefaehige Kosten und Zufuehrung zur WEG-Erhaltungsruecklage. Automatisch werden geplante Kosten, geplante Vorschuesse/Hausgeld, Monats-Hausgeld, Eigentuemer-Cashout sowie sofort und nicht sofort steuerlich beruecksichtigte Betraege gezeigt. Bei Leerstand belastet der bestehende Leerstandsprozentsatz zusaetzlich den entsprechenden Anteil der sonst vom Mieter getragenen umlagefaehigen Kosten.
+- Der alte Modus `detailliert` bleibt fuer Schaetzungen unveraendert erhalten. Ein Moduswechsel bewahrt die Eingaben beider Modi; nur der aktive Satz fliesst in die Projektion ein.
+- Im Wirtschaftsplanmodus gilt als pauschale, editierbare Standardannahme: 50 % jeder einzelnen WEG-Jahreszufuehrung werden nach durchschnittlich 5 Jahren verwendet. Die Kohortenregel ist exitunabhaengig und damit fuer Haltedauervergleiche praefixstabil. Die spaetere Verwendung ist kein zweiter Cash-Abfluss; vereinfachend wird sie dann als Werbungskosten fuer sofort abziehbaren Erhaltungsaufwand beruecksichtigt. Reale WEG-Massnahmen koennen insbesondere Herstellungskosten sein und steuerlich anders wirken. Der alte gemischte Detailmodus loest keine automatischen Entnahmen aus.
+- Der kumulierte Ruecklagenbestand entspricht Zufuehrungen abzueglich modellierter Verwendungen. Nur auf diesen verbleibenden Bestand wirkt die optionale Preiswirkungsquote; Default bleibt 0 %, weil kein separater Auszahlungsanspruch gegen die WEG besteht. Ein positiver Wert ist ausschliesslich eine geschaetzte Marktpreiswirkung: Er erhoeht den modellierten Immobilien-Verkaufspreis und damit prozentuale Verkaufskosten sowie gegebenenfalls den Gewinn nach § 23 EStG. Er wird nicht noch einmal als separates Guthaben zum Nettoerloes addiert und darf nicht bereits in der Wertentwicklung enthalten sein.
+- Szenarioformat 3 fuegt die Kostenmodus-, Wirtschaftsplan- und Verwendungsfelder hinzu. Version-1- und Version-2-Szenarien migrieren in den unveraenderten Detailmodus mit 0-EUR-Wirtschaftsplanwerten und den Annahmen 50 %/5 Jahre; damit entstehen fuer alte Szenarien keine automatischen Entnahmen. Fuer die JSONB-Szenariodaten ist keine Tabellenschema-Migration noetig. Damit Remote-MCP-Drafts die neuen Felder setzen koennen, muss jedoch die aktualisierte Validatorfunktion aus `supabase-agent-mcp.sql` deployt werden; App, Edge und SQL erlauben denselben Satz von 68 Agent-Feldpfaden.
 
 ## Nachtraegliche Agenten-Anbindung (Stand: 2026-07-16)
 
@@ -148,7 +157,7 @@ Ergebnis dieses manuellen Runs: App-Lint, Typecheck, 234/234 Tests und Build sin
 - Die Migration verwendet in sicherheitskritischen Funktionen nicht mehr das reservierte PostgreSQL-Schluesselwort `grant` als Tabellenalias. Ein frueherer, unbenutzter generischer JSON-Helper wird idempotent entfernt; der formatspezifische Draft-Validator bleibt aktiv.
 - Wenn Supabase `client_id` nur als Hook-Event-Feld liefert, wird sie vor allen Rueckgaben auch in die Exception-Basis uebernommen. Dadurch bleibt jedes OAuth-Token von einer direkten Web-Session unterscheidbar, waehrend `aud` und `immo_checker_mcp` weiterhin nur mit aktivem, konto- und clientgebundenem Grant gesetzt werden.
 - Cloud-Synchronisation liefert gueltige Teilresultate plus Anzahl invalider Zeilen. Ausgelassene Zeilen und fatale Pull-Fehler sind als persistente, schliessbare Warnung sichtbar; eine Request-ID verhindert, dass eine aeltere parallele Antwort neuere Kontodaten ueberschreibt.
-- Das Szenarioformat ist Version 2. Version-1-Daten werden explizit migriert; partielle Zwischenformen mit nur einem neuen Verkaufsnebenkostenfeld werden abgewiesen. Version-2-Daten muessen alle historisch migrierten Pflichtfelder enthalten. Exporte validieren und normalisieren alle enthaltenen Szenarien auf Version 2; Wrapper und Zeilen muessen dieselbe Version tragen, zukuenftige Versionen werden fail-closed abgewiesen.
+- In diesem Review wurde das Szenarioformat auf Version 2 gehoben. Version-1-Daten wurden explizit migriert; partielle Zwischenformen mit nur einem neuen Verkaufsnebenkostenfeld wurden abgewiesen. Version-2-Daten mussten alle historisch migrierten Pflichtfelder enthalten; Wrapper und Zeilen mussten dieselbe Version tragen. Der aktuelle Stand mit Version 3 ist im Abschnitt vom 22.07.2026 dokumentiert.
 - Der einmal gemeldete Testflake blieb in 18 zusaetzlichen Gesamtsuiten sowie im finalen Lauf nicht reproduzierbar. Statt eines spekulativen Produktfixes wurde der konkrete externe React-Testaufruf korrekt synchronisiert; zukuenftige Fehlschlaege sollen mit verbose Log, Testname und Seed gesichert werden.
 
 Verify:
@@ -169,9 +178,9 @@ Ergebnis: gezielte Regressionstests 79/79, Gesamtsuite 246/246 in 29 Testdateien
 
 - DSCR bankueblich korrigiert: Zaehler ist jetzt Nettokaltmiete abzueglich Bewirtschaftungskosten geteilt durch den planmaessigen Kapitaldienst (Zins plus Tilgung); vorher fehlte der Kostenabzug.
 - Stufen-Mietsteigerungsregeln haben ein optionales Feld `wirksamAbMonat` (1 bis 12, Default 1): Die Erhoehung wirkt im Startjahr anteilig ab diesem Monat (§ 558b BGB), ab dem Folgejahr voll; Folgeraten verzinsen auf dem vollen Stufenwert. Die Regel-Anzeige zeigt weiterhin das volle neue Mietniveau fuer den Mietspiegel-Vergleich.
-- Neues Kosten-Feld `ruecklagenAnteilPct`: Der Anteil der Instandhaltung, der auf die WEG-Erhaltungsruecklage plus die kalkulatorische Reserve fuer das Sondereigentum entfaellt, bleibt Cash-Abfluss, wird aber nicht sofort als Werbungskosten abgezogen. Reglerhinweis und eigene CSV-Spalte benennen beide Bestandteile ausdruecklich.
+- Neues Kosten-Feld `ruecklagenAnteilPct`: Der Anteil der Instandhaltung, der auf die WEG-Erhaltungsruecklage plus die kalkulatorische Reserve fuer das Sondereigentum entfaellt, bleibt Cash-Abfluss, wird aber nicht sofort als Werbungskosten abgezogen. Die Quote addiert keine Kosten, sondern teilt den eingegebenen Gesamt-Cashout steuerlich auf; die UI weist Gesamtbetrag, sofort und nicht sofort abziehbaren Teil fuer Jahr 1 explizit aus. Reglerhinweis und eigene CSV-Spalten benennen beide Bestandteile. Dieser gemischte Detailmodus modelliert weiterhin keine Entnahmen und holt einen spaeteren Werbungskostenabzug nicht automatisch nach; die spaetere Wirtschaftsplan-Erweiterung bildet WEG-Zufuehrungen getrennt ab. Das additive Feld `ruecklagenRestwertPct` steuert konservativ, welchen Anteil des verbleibenden Modellbestands ein Kaeufer voraussichtlich ueber den Immobilienpreis honoriert; Default ist 0 %. Der Betrag ist kein Auszahlungsanspruch und kein separates Guthaben: Er erhoeht Verkaufspreis, prozentuale Verkaufskosten und gegebenenfalls den §23-Gewinn und wird nicht noch einmal zum Nettoerloes addiert.
 - AfA-Satz-Ableitung aus dem Baujahr greift jetzt in allen AfA-Modi (vorher nur linear): Baujahr-Aenderung, Objekttyp-Wechsel und Verfahrenswechsel leiten `linearSatzPct` einheitlich ueber `linearAfaRateForYear` ab; der Denkmal-Infotext zeigt den angewandten Altbau-Satz. Behebt veraltete 2,0 % bei Denkmal-Objekten mit Baujahr vor 1925.
-- Beide neuen Eingabefelder sind optional mit rueckwaertskompatiblen Defaults; bestehende Szenarien laden und rechnen unveraendert.
+- Die additiven Eingabefelder sind optional mit rueckwaertskompatiblen Defaults; bestehende Szenarien laden unveraendert und setzen die neue Ruecklagen-Preiswirkung konservativ auf 0 %.
 
 Verify:
 ```bash
@@ -355,7 +364,7 @@ Anforderungen:
   - Kaufnebenkosten: GrESt % (aus Bundesland vorbelegt, editierbar), Notar/Grundbuch %, Makler %, Flag "KNK fremdfinanzieren" (Default: nein) und optionaler fremdfinanzierter KNK-Anteil %.
   - Finanzierung: Eigenkapital (% ODER absolut, umschaltbar) fuer Kaufpreis + Sanierungskosten ohne KNK, Darlehensbetrag (abgeleitet), Sollzins %, anfaengliche Tilgung %, Zinsbindung (Jahre), Anschlusszins % (nach Zinsbindung), jaehrliche Sondertilgung (Betrag oder %), optional Disagio.
   - Miete: Kaltmiete (EUR/Monat oder EUR/m2), Leerstand/Mietausfallwagnis %, Mietsteigerungs-Szenario (flexible Zeitreihe, s. Story 3).
-  - Laufende Kosten: Instandhaltungsruecklage (EUR/m2/Jahr ODER % der Miete ODER absolut), Verwaltungskosten (nicht-umlagefaehig), sonstige nicht-umlagefaehige Kosten; Kostensteigerung % p. a.
+  - Laufende Kosten wahlweise als detaillierte Schaetzung (Instandhaltung EUR/m2/Jahr, % der Miete oder absolut; Verwaltung; sonstige Kosten) oder als drei direkte Wirtschaftsplan-Summen (umlagefaehig, nicht umlagefaehig, WEG-Ruecklagenzufuehrung); Kostensteigerung % p. a.
   - Steuer: Eingabemodus (Bruttojahresgehalt zvE ODER fester Grenzsteuersatz %), Veranlagung (Single/Splitting), Soli-Toggle, Kirchensteuer % (Toggle).
   - AfA: AfA-Modus (linear nach Baujahr / degressiv 5 % / Sonder-AfA §7b / Denkmal §7i), Gebaeude-AfA-Satz (abgeleitet, editierbar).
   - Wertentwicklung: Wertsteigerungs-Szenario (flexible Zeitreihe, s. Story 3).
@@ -416,8 +425,8 @@ Anforderungen:
   - "ab Jahr N: Y % p. a." (laufende Rate, gilt bis zur naechsten Regel),
   sodass z. B. "nach 3 J. +10 %, nach 15 J. +25 %, sonst 1,5 % p. a." abbildbar ist. Funktion `projectSeries(base, rules, years)` liefert den Wert je Jahr.
 - Mieteinnahmen-Engine `src/engine/rent.ts`: Jahres-Kaltmiete je Jahr aus Basismiete + Mietsteigerungs-Zeitreihe; abzueglich Leerstand/Mietausfallwagnis %.
-- Bewirtschaftungskosten-Engine: Instandhaltung (EUR/m2/Jahr, % der Miete oder absolut - umschaltbar), nicht-umlagefaehige Verwaltung, sonstige Kosten; jaehrliche Kostensteigerung als eigene Zeitreihe/Rate.
-- Klare Trennung umlagefaehig vs. nicht-umlagefaehig (nur nicht-umlagefaehige Kosten belasten den Eigentuemer-Cashflow und sind Werbungskosten).
+- Bewirtschaftungskosten-Engine: Detailmodus mit Instandhaltung (EUR/m2/Jahr, % der Miete oder absolut), Verwaltung und sonstigen Kosten; Wirtschaftsplanmodus mit umlagefaehigen Kosten, nicht umlagefaehigen Kosten und WEG-Ruecklagenzufuehrung; jaehrliche Kostensteigerung als eigene Zeitreihe/Rate.
+- Klare Trennung umlagefaehig vs. nicht umlagefaehig: Umlagefaehige Kosten belasten den Eigentuemer wirtschaftlich nur mit dem anhand der Leerstandsquote nicht erstatteten Anteil. WEG-Zufuehrungen sind Cash-out, aber erst bei modellierter bzw. tatsaechlicher Verwendung steuerlich zu klassifizieren.
 
 When complete:
 - `projectSeries` bildet kombinierte Stufen + laufende Raten korrekt ab (Test mit dem 3J/15J-Beispiel).
@@ -448,7 +457,7 @@ Anforderungen:
   - Vereinfachter Modus: fester Grenzsteuersatz * V&V-Ergebnis.
   - Optional Soli (5,5 % auf ESt > Freigrenze) und Kirchensteuer (% auf ESt).
   - `marginalRate(zvE)` zur Anzeige des effektiven Grenzsteuersatzes.
-- V&V-Ergebnis je Jahr = Kaltmiete (nach Leerstand) - Schuldzinsen - AfA - nicht-umlagefaehige Bewirtschaftungskosten/Instandhaltung. (Tilgung NICHT abziehbar.)
+- V&V-Ergebnis je Jahr = Kaltmiete nach Leerstand - Schuldzinsen - AfA - sofort abziehbare nicht umlagefaehige Kosten - leerstandsbedingt nicht erstattete umlagefaehige Kosten - modellierte WEG-Verwendungen - weitere Werbungskosten. Tilgung und blosse Ruecklagenzufuehrung sind nicht abziehbar.
 
 When complete:
 - Lineare/degressive/Denkmal-AfA-Plaene stimmen mit Referenzrechnung (z. B. Denkmal 200.000 EUR -> 18.000 EUR/J. J1-8, 14.000 EUR/J. J9-12).

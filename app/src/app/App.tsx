@@ -14,6 +14,8 @@ import {
   cashInvestmentBreakdown,
   effectiveBodenwertAnteilPct,
   bodenwertFlaeche,
+  hasCompleteBodenrichtwertInputs,
+  CONSERVATIVE_BODENWERT_ANTEIL_PCT,
   landValueAmount,
   loanAmount,
   annualBaseRent,
@@ -87,6 +89,7 @@ import type {
   EquityMode,
   RentMode,
   MaintenanceMode,
+  KostenErfassungMode,
   TaxMode,
   Veranlagung,
   IncreaseRule,
@@ -132,22 +135,6 @@ function clampTimelinePercent(percent: number): number {
 function clampIntegerInRange(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, Math.trunc(value)));
-}
-
-function clampPercent(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(100, Math.max(0, value));
-}
-
-// flaeche = fuer den Bodenwert massgebliche Flaeche (bodenwertFlaeche: anteiliges Grundstueck, Fallback Wohnflaeche)
-function bodenrichtwertFromPct(kaufpreis: number, flaeche: number, pct: number): number {
-  if (flaeche <= 0) return 0;
-  return (kaufpreis * (clampPercent(pct) / 100)) / flaeche;
-}
-
-function bodenwertPctFromRichtwert(kaufpreis: number, flaeche: number, richtwertProSqm: number): number {
-  if (kaufpreis <= 0) return 0;
-  return clampPercent(((Math.max(0, richtwertProSqm) * flaeche) / kaufpreis) * 100);
 }
 
 function rentPerSqmFromMonthly(monthlyRent: number, wohnflaeche: number): number {
@@ -399,6 +386,7 @@ export function App() {
     updateActive((draft) => reconcileAgentReview(draft));
   }, [
     active.finanzierung.equityMode,
+    active.kosten.kostenErfassungMode,
     active.kosten.maintenanceMode,
     active.miete.rentMode,
     active.objekt.bodenwertMode,
@@ -409,6 +397,16 @@ export function App() {
 
   // Compute live calculations
   const proj = useMemo(() => runProjection(active), [active]);
+  const kostenErfassungMode = active.kosten.kostenErfassungMode ?? 'detailliert';
+  const wpUmlagefaehig = Math.max(0, active.kosten.umlagefaehigeKostenProJahr ?? 0);
+  const wpNichtUmlagefaehig = Math.max(0, active.kosten.nichtUmlagefaehigeKostenProJahr ?? 0);
+  const wpWegRuecklage = Math.max(0, active.kosten.wegRuecklageProJahr ?? 0);
+  const wpGeplanteKosten = wpUmlagefaehig + wpNichtUmlagefaehig;
+  const wpGeplanteVorschuesse = wpGeplanteKosten + wpWegRuecklage;
+  const wpLeerstandsanteil = wpUmlagefaehig
+    * (Math.min(100, Math.max(0, active.miete.leerstandPct)) / 100);
+  const wpSofortAbziehbar = wpNichtUmlagefaehig + wpLeerstandsanteil;
+  const wpEigentuemerCashout = wpSofortAbziehbar + wpWegRuecklage;
   const visibleDashboardYear = Math.min(Math.max(dashboardYear, 1), proj.years.length);
   const selectedProjectionYear = proj.years[visibleDashboardYear - 1];
 
@@ -446,9 +444,9 @@ export function App() {
   }, [active, financingSchedule.restschuldZinsbindungEnde]);
   const effectiveBodenwertPct = useMemo(() => effectiveBodenwertAnteilPct(active), [active]);
   const effectiveBodenwert = useMemo(() => landValueAmount(active), [active]);
-  const hasValidPlotShare = active.objekt.grundstuecksflaeche > 0
-    && active.objekt.miteigentumsanteilZaehler > 0
-    && active.objekt.miteigentumsanteilZaehler <= active.objekt.miteigentumsanteilNenner;
+  const hasValidPlotShare = bodenwertFlaeche(active) > 0;
+  const hasCompleteBodenrichtwert = hasCompleteBodenrichtwertInputs(active);
+  const usesConservativeBodenFallback = active.objekt.bodenwertMode === 'perSqm' && !hasCompleteBodenrichtwert;
   const currentSollzins = sensSollzins !== null ? sensSollzins : active.finanzierung.sollzinsPct;
   const currentLeerstand = sensLeerstand !== null ? sensLeerstand : active.miete.leerstandPct;
   const baseWertRule = active.wertentwicklung.szenario.find(r => r.kind === 'rate');
@@ -845,6 +843,17 @@ export function App() {
         severity: 'warning',
       });
     }
+    const firstYearReserve = proj.years[0]?.ruecklagenZufuehrung ?? 0;
+    if (
+      firstYearReserve > 0
+      && (active.kosten.ruecklagenRestwertPct ?? 0) === 0
+      && kostenErfassungMode === 'detailliert'
+    ) {
+      list.push({
+        message: `Von den Instandhaltungskosten werden im ersten Jahr ${formatEUR(firstYearReserve)} als nicht sofort abziehbare Rücklage/Reserve behandelt. Die Quote erhöht den Cash-Abfluss nicht zusätzlich. Mit 0 % Rücklagen-Preiswirkung und ohne modellierte Entnahmen unterstellt die Rechnung konservativ weder einen Preisaufschlag beim Exit noch einen späteren Steuerabzug.`,
+        severity: 'warning',
+      });
+    }
     const endRestschuld = exitRes.restschuld;
     if (endRestschuld > 0 && active.exit.haltedauerJahre >= active.finanzierung.zinsbindungJahre) {
       list.push({
@@ -853,12 +862,12 @@ export function App() {
       });
     }
     return list;
-  }, [proj, active, active.exit.haltedauerJahre, active.finanzierung.zinsbindungJahre, exitRes]);
+  }, [proj, active, active.exit.haltedauerJahre, active.finanzierung.zinsbindungJahre, exitRes, kostenErfassungMode]);
 
   // Chart data mappings for Recharts
   const cashflowChartData = useMemo(() => {
     return proj.years.map(y => {
-      const costsVal = -(y.instandhaltung + y.verwaltung + y.sonstigeKosten);
+      const costsVal = -y.bewirtschaftungskosten;
       const taxVal = -y.steuereffekt; // positive means savings, negative means payment
       return {
         Jahr: `J. ${y.jahr}`,
@@ -1745,19 +1754,6 @@ export function App() {
                     min={1}
                     onChange={(val) => updateActive((d) => {
                       d.objekt.kaufpreis = val;
-                      if (d.objekt.bodenwertMode === 'perSqm') {
-                        d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
-                          val,
-                          bodenwertFlaeche(d),
-                          d.objekt.bodenrichtwertProSqm
-                        );
-                      } else {
-                        d.objekt.bodenrichtwertProSqm = bodenrichtwertFromPct(
-                          val,
-                          bodenwertFlaeche(d),
-                          d.objekt.bodenwertAnteilPct
-                        );
-                      }
                     })}
                   />
                   </AgentFieldFrame>
@@ -1769,19 +1765,6 @@ export function App() {
                       min={1}
                       onChange={(val) => updateActive((d) => {
                         d.objekt.wohnflaeche = val;
-                        if (d.objekt.bodenwertMode === 'perSqm') {
-                          d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
-                            d.objekt.kaufpreis,
-                            bodenwertFlaeche(d),
-                            d.objekt.bodenrichtwertProSqm
-                          );
-                        } else {
-                          d.objekt.bodenrichtwertProSqm = bodenrichtwertFromPct(
-                            d.objekt.kaufpreis,
-                            bodenwertFlaeche(d),
-                            d.objekt.bodenwertAnteilPct
-                          );
-                        }
                         syncRentForMode(d, d.miete.rentMode);
                       })}
                     />
@@ -1834,21 +1817,7 @@ export function App() {
                       <Tabs
                         activeTab={active.objekt.bodenwertMode}
                         onChange={(id) => updateActive((d) => {
-                          const mode = id as BodenwertMode;
-                          d.objekt.bodenwertMode = mode;
-                          if (mode === 'perSqm') {
-                            d.objekt.bodenrichtwertProSqm = bodenrichtwertFromPct(
-                              d.objekt.kaufpreis,
-                              bodenwertFlaeche(d),
-                              d.objekt.bodenwertAnteilPct
-                            );
-                          } else {
-                            d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
-                              d.objekt.kaufpreis,
-                              bodenwertFlaeche(d),
-                              d.objekt.bodenrichtwertProSqm
-                            );
-                          }
+                          d.objekt.bodenwertMode = id as BodenwertMode;
                         })}
                         tabs={[
                           { id: 'percent', label: 'Boden %' },
@@ -1861,14 +1830,7 @@ export function App() {
                         <Slider
                           label="Bodenwertanteil (%)"
                           value={active.objekt.bodenwertAnteilPct}
-                          onChange={(val) => updateActive((d) => {
-                            d.objekt.bodenwertAnteilPct = val;
-                            d.objekt.bodenrichtwertProSqm = bodenrichtwertFromPct(
-                              d.objekt.kaufpreis,
-                              bodenwertFlaeche(d),
-                              val
-                            );
-                          })}
+                          onChange={(val) => updateActive((d) => { d.objekt.bodenwertAnteilPct = val; })}
                           min={0}
                           max={100}
                           suffix="%"
@@ -1882,14 +1844,7 @@ export function App() {
                           value={active.objekt.bodenrichtwertProSqm}
                           suffix="EUR/m²"
                           min={0}
-                          onChange={(val) => updateActive((d) => {
-                            d.objekt.bodenrichtwertProSqm = val;
-                            d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
-                              d.objekt.kaufpreis,
-                              bodenwertFlaeche(d),
-                              val
-                            );
-                          })}
+                          onChange={(val) => updateActive((d) => { d.objekt.bodenrichtwertProSqm = val; })}
                         />
                         </AgentFieldFrame>
                         <AgentFieldFrame path="/objekt/grundstuecksflaeche">
@@ -1897,14 +1852,7 @@ export function App() {
                           label="Grundstück gesamt (m²)"
                           value={active.objekt.grundstuecksflaeche}
                           min={0}
-                          onChange={(val) => updateActive((d) => {
-                            d.objekt.grundstuecksflaeche = val;
-                            d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
-                              d.objekt.kaufpreis,
-                              bodenwertFlaeche(d),
-                              d.objekt.bodenrichtwertProSqm
-                            );
-                          })}
+                          onChange={(val) => updateActive((d) => { d.objekt.grundstuecksflaeche = val; })}
                         />
                         </AgentFieldFrame>
                         <div className="grid grid-cols-2 gap-2">
@@ -1913,18 +1861,9 @@ export function App() {
                             label="MEA – Ihr Anteil"
                             value={active.objekt.miteigentumsanteilZaehler}
                             suffix="plain"
-                            min={1}
+                            min={0}
                             onChange={(val) => updateActive((d) => {
-                              d.objekt.miteigentumsanteilZaehler = Math.max(1, val);
-                              d.objekt.miteigentumsanteilNenner = Math.max(
-                                d.objekt.miteigentumsanteilNenner,
-                                d.objekt.miteigentumsanteilZaehler
-                              );
-                              d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
-                                d.objekt.kaufpreis,
-                                bodenwertFlaeche(d),
-                                d.objekt.bodenrichtwertProSqm
-                              );
+                              d.objekt.miteigentumsanteilZaehler = Math.max(0, val);
                             })}
                           />
                           </AgentFieldFrame>
@@ -1933,17 +1872,9 @@ export function App() {
                             label="MEA – Objekt gesamt"
                             value={active.objekt.miteigentumsanteilNenner}
                             suffix="plain"
-                            min={active.objekt.miteigentumsanteilZaehler}
+                            min={0}
                             onChange={(val) => updateActive((d) => {
-                              d.objekt.miteigentumsanteilNenner = Math.max(
-                                d.objekt.miteigentumsanteilZaehler,
-                                val
-                              );
-                              d.objekt.bodenwertAnteilPct = bodenwertPctFromRichtwert(
-                                d.objekt.kaufpreis,
-                                bodenwertFlaeche(d),
-                                d.objekt.bodenrichtwertProSqm
-                              );
+                              d.objekt.miteigentumsanteilNenner = Math.max(0, val);
                             })}
                           />
                           </AgentFieldFrame>
@@ -1965,10 +1896,12 @@ export function App() {
                           <p className="text-[10px] font-medium text-amber-600 leading-snug">
                             Der MEA muss größer als 0 sein und darf „Objekt gesamt“ nicht überschreiten.
                           </p>
-                        ) : (
+                        ) : null}
+                        {usesConservativeBodenFallback && (
                           <p className="text-[10px] font-medium text-amber-600 leading-snug">
-                            Ohne Grundstücksfläche wird der Richtwert näherungsweise mit der Wohnfläche multipliziert —
-                            bei Eigentumswohnungen meist deutlich zu hoch (zu wenig AfA). Grundstücksfläche und MEA eintragen!
+                            Solange Bodenrichtwert, Grundstücksfläche oder MEA unvollständig sind, rechnet die App
+                            konservativ mit <strong>{CONSERVATIVE_BODENWERT_ANTEIL_PCT} % Bodenanteil</strong>. Bereits
+                            erfasste Werte bleiben gespeichert und werden automatisch verwendet, sobald alle Angaben vollständig sind.
                           </p>
                         )}
                         </>
@@ -1976,6 +1909,7 @@ export function App() {
                       <div className="rounded-lg bg-slate-50 px-3 py-2 text-[10px] font-medium text-slate-500">
                         Bodenwert: <strong className="text-slate-700">{formatEUR(effectiveBodenwert)}</strong>
                         {' '}= <strong className="text-slate-700">{formatPercent(effectiveBodenwertPct, 2)}</strong> vom Kaufpreis.
+                        {usesConservativeBodenFallback ? ' (konservativer Fallback)' : ''}
                       </div>
                       <p className="text-[10px] text-slate-400 mt-1 leading-snug">
                         Anteil des Grundstückswerts am Kaufpreis — nur das Gebäude ist abschreibbar (AfA).
@@ -2754,7 +2688,9 @@ export function App() {
                   <span>Laufende Kosten</span>
                   {openSection !== 'kosten' && (
                     <span className="text-[11px] font-medium text-slate-400 mt-0.5">
-                      {formatEUR(active.kosten.verwaltungProJahr)}/Jahr Verwaltung
+                      {kostenErfassungMode === 'wirtschaftsplan'
+                        ? `${formatEUR(wpGeplanteVorschuesse / 12)}/Monat Hausgeld · ${formatEUR(wpEigentuemerCashout)}/Jahr Eigentümer`
+                        : `${formatEUR(proj.years[0]?.bewirtschaftungskosten ?? 0)}/Jahr Eigentümer`}
                     </span>
                   )}
                 </div>
@@ -2764,87 +2700,273 @@ export function App() {
               </button>
               {openSection === 'kosten' && (
                 <div className="border-t border-slate-100 px-5 py-5 space-y-4">
-                  <AgentFieldFrame path="/kosten/maintenanceMode">
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Instandhaltung Modus</span>
-                    <Tabs
-                      activeTab={active.kosten.maintenanceMode}
-                      onChange={(id) => updateActive((d) => { d.kosten.maintenanceMode = id as MaintenanceMode; })}
-                      tabs={[
-                        { id: 'perSqm', label: 'Pro m²/Jahr' },
-                        { id: 'percentRent', label: '% der Miete' },
-                        { id: 'absolute', label: 'Absolut p. a.' },
-                      ]}
-                    />
-                  </div>
+                  <AgentFieldFrame path="/kosten/kostenErfassungMode">
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Kostenerfassung</span>
+                      <Tabs
+                        activeTab={kostenErfassungMode}
+                        onChange={(id) => updateActive((d) => {
+                          d.kosten.kostenErfassungMode = id as KostenErfassungMode;
+                        })}
+                        tabs={[
+                          { id: 'wirtschaftsplan', label: 'Direkt aus Wirtschaftsplan' },
+                          { id: 'detailliert', label: 'Detaillierte Schätzung' },
+                        ]}
+                      />
+                      <p className="text-[10px] leading-relaxed text-slate-500">
+                        Beim Wechsel bleiben die Eingaben des jeweils anderen Modus gespeichert. Berechnet wird nur der aktive Modus.
+                      </p>
+                    </div>
                   </AgentFieldFrame>
-                  {active.kosten.maintenanceMode === 'perSqm' && (
-                    <AgentFieldFrame path="/kosten/instandhaltungProSqm">
-                    <NumberInput
-                      label="Instandhaltung pro m²/Jahr"
-                      value={active.kosten.instandhaltungProSqm}
-                      min={0}
-                      onChange={(val) => updateActive((d) => { d.kosten.instandhaltungProSqm = val; })}
-                    />
-                    </AgentFieldFrame>
+                  {kostenErfassungMode === 'wirtschaftsplan' ? (
+                    <>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                        <AgentFieldFrame path="/kosten/umlagefaehigeKostenProJahr">
+                          <NumberInput
+                            label="Summe umlagefähige Kosten"
+                            value={wpUmlagefaehig}
+                            suffix="EUR"
+                            min={0}
+                            fractionDigits={2}
+                            onChange={(val) => updateActive((d) => { d.kosten.umlagefaehigeKostenProJahr = val; })}
+                          />
+                        </AgentFieldFrame>
+                        <AgentFieldFrame path="/kosten/nichtUmlagefaehigeKostenProJahr">
+                          <NumberInput
+                            label="Summe nicht umlagefähige Kosten"
+                            value={wpNichtUmlagefaehig}
+                            suffix="EUR"
+                            min={0}
+                            fractionDigits={2}
+                            onChange={(val) => updateActive((d) => { d.kosten.nichtUmlagefaehigeKostenProJahr = val; })}
+                          />
+                        </AgentFieldFrame>
+                        <AgentFieldFrame path="/kosten/wegRuecklageProJahr">
+                          <NumberInput
+                            label="Summe Zuführung Erhaltungsrücklage"
+                            value={wpWegRuecklage}
+                            suffix="EUR"
+                            min={0}
+                            fractionDigits={2}
+                            onChange={(val) => updateActive((d) => { d.kosten.wegRuecklageProJahr = val; })}
+                          />
+                        </AgentFieldFrame>
+                      </div>
+                      <p className="text-[10px] leading-relaxed text-slate-500">
+                        Die drei Jahressummen können direkt aus dem Wirtschaftsplan übernommen werden. Die Rücklagenzuführung
+                        steht dort regelmäßig zusätzlich zu den geplanten Kosten und ist noch kein sofortiger Werbungskostenabzug.
+                      </p>
+                      <div className="rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2.5 text-[10px] text-blue-950 space-y-1.5">
+                        <div className="flex justify-between gap-4">
+                          <span>Summe geplante Kosten</span>
+                          <strong>{formatEUR(wpGeplanteKosten, 2)}</strong>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span>Summe geplante Vorschüsse / Hausgeld p. a.</span>
+                          <strong>{formatEUR(wpGeplanteVorschuesse, 2)}</strong>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span>Hausgeld pro Monat</span>
+                          <strong>{formatEUR(wpGeplanteVorschuesse / 12, 2)}</strong>
+                        </div>
+                        <div className="flex justify-between gap-4 border-t border-blue-100 pt-1.5">
+                          <span>Nicht umlegbar wegen {formatPercent(active.miete.leerstandPct)} Leerstand</span>
+                          <strong>{formatEUR(wpLeerstandsanteil, 2)}</strong>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span>Eigentümer-Cashout p. a.</span>
+                          <strong>{formatEUR(wpEigentuemerCashout, 2)}</strong>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span>davon sofort steuerlich berücksichtigt (Modell)</span>
+                          <strong>{formatEUR(wpSofortAbziehbar, 2)}</strong>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span>davon nicht sofort berücksichtigt</span>
+                          <strong>{formatEUR(wpWegRuecklage, 2)}</strong>
+                        </div>
+                        <p className="border-t border-blue-100 pt-1.5 leading-relaxed">
+                          Umlagefähige Kosten trägt der Eigentümer im Modell nur insoweit dauerhaft selbst, wie sie wegen
+                          Leerstands nicht vom Mieter erstattet werden. Die App verwendet dafür automatisch die bereits
+                          erfasste Leerstandsquote.
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-3">
+                        <div className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                          Erwartete Verwendung der WEG-Rücklage
+                        </div>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <AgentFieldFrame path="/kosten/ruecklagenVerwendungPct">
+                            <Slider
+                              label="Verwendung je Jahreszuführung (%)"
+                              value={active.kosten.ruecklagenVerwendungPct ?? 50}
+                              onChange={(val) => updateActive((d) => { d.kosten.ruecklagenVerwendungPct = val; })}
+                              min={0}
+                              max={100}
+                              step={1}
+                              suffix="%"
+                            />
+                          </AgentFieldFrame>
+                          <AgentFieldFrame path="/kosten/ruecklagenVerzoegerungJahre">
+                            <NumberInput
+                              label="Durchschnittliche Verzögerung"
+                              value={active.kosten.ruecklagenVerzoegerungJahre ?? 5}
+                              suffix="Jahre"
+                              min={1}
+                              max={40}
+                              step={1}
+                              onChange={(val) => updateActive((d) => {
+                                d.kosten.ruecklagenVerzoegerungJahre = clampIntegerInRange(val, 1, 40);
+                              })}
+                            />
+                          </AgentFieldFrame>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-slate-500">
+                          Pauschale, editierbare Standardannahme: <strong>50 % jeder einzelnen Jahreszuführung</strong> werden
+                          nach durchschnittlich <strong>5 Jahren</strong> durch die WEG verwendet. Die Verwendung ist kein
+                          zweiter Cash-Abfluss; vereinfachend wird sie dann als sofort abziehbarer Erhaltungsaufwand
+                          behandelt. Tatsächliche Maßnahmen können später, früher oder als Herstellungskosten steuerlich
+                          anders wirken. Junge Zuführungen, deren Verzögerung beim Verkauf noch nicht abgelaufen ist,
+                          bleiben im modellierten Bestand.
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <AgentFieldFrame path="/kosten/maintenanceMode">
+                        <div className="space-y-1.5">
+                          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Instandhaltung Modus</span>
+                          <Tabs
+                            activeTab={active.kosten.maintenanceMode}
+                            onChange={(id) => updateActive((d) => { d.kosten.maintenanceMode = id as MaintenanceMode; })}
+                            tabs={[
+                              { id: 'perSqm', label: 'Pro m²/Jahr' },
+                              { id: 'percentRent', label: '% der Miete' },
+                              { id: 'absolute', label: 'Absolut p. a.' },
+                            ]}
+                          />
+                        </div>
+                      </AgentFieldFrame>
+                      {active.kosten.maintenanceMode === 'perSqm' && (
+                        <AgentFieldFrame path="/kosten/instandhaltungProSqm">
+                          <NumberInput
+                            label="Instandhaltung pro m²/Jahr"
+                            value={active.kosten.instandhaltungProSqm}
+                            min={0}
+                            onChange={(val) => updateActive((d) => { d.kosten.instandhaltungProSqm = val; })}
+                          />
+                        </AgentFieldFrame>
+                      )}
+                      {active.kosten.maintenanceMode === 'percentRent' && (
+                        <AgentFieldFrame path="/kosten/instandhaltungPctRent">
+                          <Slider
+                            label="Instandhaltung (% der Kaltmiete)"
+                            value={active.kosten.instandhaltungPctRent}
+                            onChange={(val) => updateActive((d) => { d.kosten.instandhaltungPctRent = val; })}
+                            min={0}
+                            max={20}
+                            suffix="%"
+                          />
+                        </AgentFieldFrame>
+                      )}
+                      {active.kosten.maintenanceMode === 'absolute' && (
+                        <AgentFieldFrame path="/kosten/instandhaltungAbsolut">
+                          <NumberInput
+                            label="Instandhaltung pro Jahr"
+                            value={active.kosten.instandhaltungAbsolut}
+                            suffix="EUR"
+                            min={0}
+                            onChange={(val) => updateActive((d) => { d.kosten.instandhaltungAbsolut = val; })}
+                          />
+                        </AgentFieldFrame>
+                      )}
+                      <div className="space-y-1.5">
+                        <Slider
+                          label="davon Rücklage + kalkulatorische Reserve (%)"
+                          value={active.kosten.ruecklagenAnteilPct}
+                          onChange={(val) => updateActive((d) => { d.kosten.ruecklagenAnteilPct = val; })}
+                          min={0}
+                          max={100}
+                          step={1}
+                          suffix="%"
+                        />
+                        <p className="text-[10px] leading-relaxed text-slate-500">
+                          Anteil der Instandhaltung, der <strong>nicht sofort abziehbar</strong> ist: die
+                          Erhaltungsrücklage der WEG und die kalkulatorische Reserve für das Sondereigentum. Beides bindet
+                          Liquidität, aber mindert noch nicht das V&amp;V-Ergebnis. In diesem gemischten Schätzmodus werden
+                          keine späteren Entnahmen modelliert; wie viel des Bestands ein Käufer über den Immobilienpreis
+                          honoriert, steuert die separate Preiswirkungsquote. Für die saubere WEG-Steuerlogik bitte den
+                          Wirtschaftsplan-Modus nutzen.
+                        </p>
+                        <div className="rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2 text-[10px] text-blue-900 space-y-1">
+                          <div className="flex justify-between gap-4">
+                            <span>Cash-Abfluss Jahr 1 insgesamt</span>
+                            <strong>{formatEUR(proj.years[0]?.instandhaltung ?? 0)}</strong>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span>davon nicht sofort abziehbar</span>
+                            <strong>{formatEUR(proj.years[0]?.ruecklagenZufuehrung ?? 0)}</strong>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span>davon im Jahr sofort abziehbar</span>
+                            <strong>{formatEUR(
+                              (proj.years[0]?.instandhaltung ?? 0) - (proj.years[0]?.ruecklagenZufuehrung ?? 0)
+                            )}</strong>
+                          </div>
+                          <p className="border-t border-blue-100 pt-1 leading-relaxed">
+                            Die Prozentquote teilt den oben eingegebenen Gesamtbetrag nur auf; sie addiert keine Kosten.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <NumberInput
+                          label="Verwaltungskosten p. a."
+                          value={active.kosten.verwaltungProJahr}
+                          suffix="EUR"
+                          min={0}
+                          onChange={(val) => updateActive((d) => { d.kosten.verwaltungProJahr = val; })}
+                        />
+                        <NumberInput
+                          label="Sonstige nicht-umlagef. Kosten p. a."
+                          value={active.kosten.sonstigeKostenProJahr}
+                          suffix="EUR"
+                          min={0}
+                          onChange={(val) => updateActive((d) => { d.kosten.sonstigeKostenProJahr = val; })}
+                        />
+                      </div>
+                    </>
                   )}
-                  {active.kosten.maintenanceMode === 'percentRent' && (
-                    <AgentFieldFrame path="/kosten/instandhaltungPctRent">
-                    <Slider
-                      label="Instandhaltung (% der Kaltmiete)"
-                      value={active.kosten.instandhaltungPctRent}
-                      onChange={(val) => updateActive((d) => { d.kosten.instandhaltungPctRent = val; })}
-                      min={0}
-                      max={20}
-                      suffix="%"
-                    />
-                    </AgentFieldFrame>
-                  )}
-                  {active.kosten.maintenanceMode === 'absolute' && (
-                    <AgentFieldFrame path="/kosten/instandhaltungAbsolut">
-                    <NumberInput
-                      label="Instandhaltung pro Jahr"
-                      value={active.kosten.instandhaltungAbsolut}
-                      suffix="EUR"
-                      min={0}
-                      onChange={(val) => updateActive((d) => { d.kosten.instandhaltungAbsolut = val; })}
-                    />
-                    </AgentFieldFrame>
-                  )}
+                  <AgentFieldFrame path="/kosten/ruecklagenRestwertPct">
                   <div className="space-y-1.5">
                     <Slider
-                      label="davon Rücklage + kalkulatorische Reserve (%)"
-                      value={active.kosten.ruecklagenAnteilPct}
-                      onChange={(val) => updateActive((d) => { d.kosten.ruecklagenAnteilPct = val; })}
+                      label={kostenErfassungMode === 'wirtschaftsplan'
+                        ? 'WEG-Rücklage: Preiswirkung beim Exit (%)'
+                        : 'Reserve: Preiswirkung beim Exit (%)'}
+                      value={active.kosten.ruecklagenRestwertPct ?? 0}
+                      onChange={(val) => updateActive((d) => { d.kosten.ruecklagenRestwertPct = val; })}
                       min={0}
                       max={100}
                       step={1}
                       suffix="%"
                     />
-                    <p className="text-[10px] leading-relaxed text-slate-500">
-                      Anteil der Instandhaltung, der <strong>nicht sofort abziehbar</strong> ist: die Zuführung zur
-                      Erhaltungsrücklage der WEG (Werbungskosten erst bei Verausgabung durch die WEG) und die
-                      kalkulatorische Reserve für das Sondereigentum (abziehbar erst bei tatsächlicher Reparatur).
-                      Beides mindert den Cashflow, aber nicht das V&amp;V-Ergebnis. Nur die laufenden
-                      Reparaturen/Erhaltungsaufwendungen des Jahres bleiben sofort abziehbar.
-                    </p>
+                    {kostenErfassungMode === 'wirtschaftsplan' ? (
+                      <p className="text-[10px] leading-relaxed text-slate-500">
+                        <strong>Preiswirkung konservativ wählen:</strong> 0 %, solange nicht belastbar abschätzbar ist, wie
+                        stark ein Käufer den verbleibenden Bestand honoriert. Die Rücklage wird nicht separat ausgezahlt.
+                        Ein positiver Wert erhöht den modellierten Immobilienpreis und damit auch prozentuale Verkaufskosten
+                        sowie gegebenenfalls den Gewinn nach § 23 EStG.
+                      </p>
+                    ) : (
+                      <p className="text-[10px] leading-relaxed text-slate-500">
+                        <strong>Preiswirkung konservativ wählen:</strong> Da dieser Schätzmodus WEG-Zuführung und private
+                        Reserve nicht trennt, sollte die Quote grundsätzlich 0 % bleiben. Ein positiver Ansatz darf nur den
+                        tatsächlich WEG-gebundenen Anteil abbilden, den ein Käufer über den Immobilienpreis honoriert; eine
+                        private Reserve bleibt Vermögen des Verkäufers und ist keine Käufer-Preiswirkung. Eine bereits in der
+                        Wertsteigerung enthaltene Wirkung darf nicht noch einmal angesetzt werden.
+                      </p>
+                    )}
                   </div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <NumberInput
-                      label="Verwaltungskosten p. a."
-                      value={active.kosten.verwaltungProJahr}
-                      suffix="EUR"
-                      min={0}
-                      onChange={(val) => updateActive((d) => { d.kosten.verwaltungProJahr = val; })}
-                    />
-                    <NumberInput
-                      label="Sonstige nicht-umlagef. Kosten p. a."
-                      value={active.kosten.sonstigeKostenProJahr}
-                      suffix="EUR"
-                      min={0}
-                      onChange={(val) => updateActive((d) => { d.kosten.sonstigeKostenProJahr = val; })}
-                    />
-                  </div>
+                  </AgentFieldFrame>
                   <Slider
                     label="Kostensteigerung (% p. a.)"
                     value={active.kosten.kostensteigerungPctPa}
@@ -3538,7 +3660,7 @@ export function App() {
                 value={formatPercent(metrics.irr)}
                 trend={metrics.rating === 'green' ? 'positive' : metrics.rating === 'red' ? 'negative' : 'neutral'}
                 subtext={bestIrrExitYear ? `Bestes Jahr: ${bestIrrExitYear.jahr} (${formatPercent(bestIrrExitYear.irrPct)})` : 'Interner Zinsfuss'}
-                tooltip="IRR ist der interne Zinsfuss der Eigenkapital-Cashflows inklusive laufender Cashflows und Verkaufserloes."
+                tooltip="IRR ist der interne Zinsfuss der Eigenkapital-Cashflows inklusive laufender Cashflows und Verkaufserloes. Eine positive Ruecklagen-Preiswirkungsquote wirkt nur ueber einen entsprechend hoeher angesetzten Immobilienpreis."
               />
               <KPICard
                 label={`Cashflow Monat · Jahr ${selectedProjectionYear.jahr}`}
@@ -3552,7 +3674,7 @@ export function App() {
                 value={formatEUR(exitRes.nettoVerkaufserloesNachSteuer)}
                 trend={exitRes.nettoVerkaufserloesNachSteuer >= cashBreakdown.totalCashInvestment ? 'positive' : 'negative'}
                 subtext={`nach ${active.exit.haltedauerJahre} Jahren`}
-                tooltip="Verkaufserloes nach Verkaufskosten, Restschuld, Vorfaelligkeit und Spekulationssteuer."
+                tooltip="Verkaufserloes nach Verkaufskosten, Restschuld, Vorfaelligkeit und Spekulationssteuer. Eine positive Ruecklagen-Preiswirkungsquote ist bereits im angezeigten Verkaufspreis enthalten und wird nicht separat addiert."
               />
             </div>
 
@@ -3640,7 +3762,7 @@ export function App() {
                       value: formatPercent(metrics.nettomietrendite),
                       color: metrics.nettomietrendite >= 3.5 ? 'text-emerald-700' : 'text-slate-700',
                       desc: 'Jahresnettomiete abzgl. Bewirtschaftungskosten / Gesamterwerbskosten',
-                      tooltip: 'Jahreskaltmiete abzüglich nicht umlagefaehiger Kosten geteilt durch Kaufpreis plus Kaufnebenkosten.',
+                      tooltip: 'Netto-Kaltmiete nach Leerstand abzüglich des vollständigen Eigentümer-Cashouts geteilt durch Kaufpreis plus Kaufnebenkosten.',
                     },
                     {
                       label: 'Brutto-Mietrendite',
@@ -3750,9 +3872,10 @@ export function App() {
                 <div className="flex items-start gap-2.5">
                   <CheckCircle className="text-blue-600 shrink-0 mt-0.5" size={18} />
                   <div>
-                    Am Ende der Haltedauer von <strong className="text-slate-900">{active.exit.haltedauerJahre} Jahren</strong> beträgt der prognostizierte Immobilienwert{' '}
+                    Am Ende der Haltedauer von <strong className="text-slate-900">{active.exit.haltedauerJahre} Jahren</strong> beträgt der prognostizierte Verkaufspreis einschließlich einer angesetzten Rücklagen-Preiswirkung{' '}
                     <strong className="text-slate-900">{formatEUR(exitRes.verkaufspreis)}</strong> bei einer verbleibenden Restschuld von{' '}
-                    <strong className="text-slate-900">{formatEUR(exitRes.restschuld)}</strong>. Nach Abzug aller Nebenkosten und Steuern verbleibt ein Netto-Erlös von{' '}
+                    <strong className="text-slate-900">{formatEUR(exitRes.restschuld)}</strong>. Die darin enthaltene geschätzte Rücklagen-Preiswirkung beträgt{' '}
+                    <strong className="text-slate-900">{formatEUR(exitRes.ruecklagenRestwert)}</strong>. Nach Abzug aller Nebenkosten und Steuern verbleibt ein Netto-Erlös von{' '}
                     <strong className="text-slate-900">{formatEUR(exitRes.nettoVerkaufserloesNachSteuer)}</strong>.
                   </div>
                 </div>
@@ -3856,7 +3979,7 @@ export function App() {
                 <CardDescription>Projektion des Verkaufs und eventueller Steuerlasten</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
                   <div className="space-y-0.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Verkaufspreis</span>
                     <p className="text-sm font-bold text-slate-800 tabular-nums">{formatEUR(exitRes.verkaufspreis)}</p>
@@ -3864,6 +3987,13 @@ export function App() {
                   <div className="space-y-0.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Restschuld</span>
                     <p className="text-sm font-bold text-slate-800 tabular-nums">{formatEUR(exitRes.restschuld)}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Rücklagen-Preiswirkung
+                      <InfoTooltip content="Geschätzter Anteil des verbleibenden modellierten WEG-Rücklagenbestands, den ein Käufer über einen höheren Immobilienpreis honoriert. Standard sind konservative 0 %. Es ist kein separates Guthaben oder Auszahlungsrecht; bei positivem Ansatz steigen Verkaufspreis, prozentuale Verkaufskosten und gegebenenfalls der Gewinn nach § 23 EStG." />
+                    </span>
+                    <p className="text-sm font-bold text-slate-800 tabular-nums">{formatEUR(exitRes.ruecklagenRestwert)}</p>
                   </div>
                   <div className="space-y-0.5">
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
@@ -3907,6 +4037,8 @@ export function App() {
                         <th className="px-4 py-3">Zinsen</th>
                         <th className="px-4 py-3">Steuereffekt</th>
                         <th className="px-4 py-3">Netto-CF p. a.</th>
+                        <th className="px-4 py-3">WEG-Verwendung</th>
+                        <th className="px-4 py-3">Rücklage/Reserve kum.</th>
                         <th className="px-4 py-3">Immobilienwert</th>
                         <th className="px-4 py-3">Restschuld</th>
                       </tr>
@@ -3924,6 +4056,8 @@ export function App() {
                           <td className={`px-4 py-3 font-semibold ${year.cashflowNachSteuer >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                             {formatEUR(year.cashflowNachSteuer)}
                           </td>
+                          <td className="px-4 py-3 text-slate-700">{formatEUR(year.ruecklagenEntnahme)}</td>
+                          <td className="px-4 py-3 text-slate-700">{formatEUR(year.kumulierteRuecklage)}</td>
                           <td className="px-4 py-3 text-slate-900">{formatEUR(year.immobilienwert)}</td>
                           <td className="px-4 py-3 text-slate-500">{formatEUR(year.restschuld)}</td>
                         </tr>
@@ -4439,9 +4573,11 @@ export function App() {
               <div className="pt-1 font-bold text-slate-700 uppercase tracking-wider">Annahmen &amp; Vereinfachungen</div>
               <ul className="list-disc pl-4 space-y-0.5">
                 <li>Steuer-/AfA-Stand: Veranlagungsjahr 2026 (ESt-Tarif §32a, Grunderwerbsteuer je Bundesland, AfA-Sätze). Alle Werte in der UI editierbar.</li>
-                <li>Steuereffekt aus Vermietung &amp; Verpachtung über den Tarif-Unterschied (mit/ohne V&amp;V) bzw. wahlweise über einen festen Grenzsteuersatz; nur Schuldzinsen, AfA und nicht-umlagefähige Kosten sind Werbungskosten (Tilgung nicht).</li>
+                <li>Steuereffekt aus Vermietung &amp; Verpachtung über den Tarif-Unterschied (mit/ohne V&amp;V) bzw. wahlweise über einen festen Grenzsteuersatz. Im Modell zählen insbesondere Schuldzinsen, AfA, sofort abziehbare nicht umlagefähige Kosten, leerstandsbedingt nicht erstattete umlagefähige Kosten und modellierte WEG-Verwendungen als Werbungskosten; Tilgung und die bloße Rücklagenzuführung nicht.</li>
                 <li>Spekulationssteuer (§23 EStG) wird mit dem Grenzsteuersatz auf den Gewinn (inkl. Wiederaufnahme genutzter AfA) geschätzt; im Jahresraster ist Jahr 10 noch innerhalb der Frist, steuerfrei wird der Exit ab Jahr 11 modelliert.</li>
-                <li>Wert- und Mietentwicklung sind szenariobasiert (frei einstellbare Stufen/Raten), keine Marktprognose. Leerstand pauschal als Mietausfallwagnis.</li>
+                <li>Im Wirtschaftsplan-Modus wird die eingestellte Quote jeder WEG-Jahreszuführung nach der gewählten Verzögerung als Verwendung für sofort abziehbaren Erhaltungsaufwand modelliert – ohne zweiten Cash-Abfluss. Reale Maßnahmen können insbesondere Herstellungskosten sein und dann steuerlich anders wirken. Im gemischten Detail-Schätzmodus werden weiterhin keine Entnahmen modelliert.</li>
+                <li>Die verbleibende Rücklage hat standardmäßig 0 % Preiswirkung beim Exit. Eine höhere Quote bildet nur eine geschätzte Marktpreiswirkung ab, ist kein Auszahlungsanspruch gegen die WEG und darf nicht bereits in der Wertentwicklung beziehungsweise im Immobilienwert vor dieser Preiswirkung enthalten sein.</li>
+                <li>Wert- und Mietentwicklung sind szenariobasiert (frei einstellbare Stufen/Raten), keine Marktprognose. Leerstand wirkt als Mietausfall und im Wirtschaftsplan-Modus zusätzlich auf den nicht erstatteten Anteil umlagefähiger Kosten.</li>
                 <li>Nicht abgebildet: WEG-Sonderumlagen, individuelle Förderdarlehen, Umsatzsteuer-Option, gewerblicher Grundstückshandel, Bonitäts-/Liquiditätsprüfung der Bank.</li>
               </ul>
             </div>

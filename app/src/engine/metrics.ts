@@ -251,13 +251,14 @@ export function calculateMetrics(
   const jahreskaltmiete = annualBaseRent(scenario);
   const bruttomietrendite = kaufpreis > 0 ? (jahreskaltmiete / kaufpreis) * 100 : 0;
 
-  const instandhaltungYear1 = firstYear ? firstYear.instandhaltung : 0;
-  const verwaltungYear1 = firstYear ? firstYear.verwaltung : 0;
-  const sonstigeYear1 = firstYear ? firstYear.sonstigeKosten : 0;
-  const bewirtschaftungskostenYear1 = instandhaltungYear1 + verwaltungYear1 + sonstigeYear1;
+  // Die Projektion kennt fuer beide Erfassungsmodi bereits den vollstaendigen
+  // Eigentuemer-Cashout. Im Wirtschaftsplanmodus umfasst er insbesondere auch
+  // die WEG-Zufuehrung und umlagefaehige Kosten, die wegen Leerstands ausfallen.
+  const bewirtschaftungskostenYear1 = firstYear?.bewirtschaftungskosten ?? 0;
+  const nettoKaltmieteYear1 = firstYear?.nettoKaltmiete ?? jahreskaltmiete;
 
   const nettomietrendite = (kaufpreis + knk) > 0
-    ? ((jahreskaltmiete - bewirtschaftungskostenYear1) / (kaufpreis + knk)) * 100
+    ? ((nettoKaltmieteYear1 - bewirtschaftungskostenYear1) / (kaufpreis + knk)) * 100
     : 0;
 
   const kaufpreisfaktor = jahreskaltmiete > 0 ? kaufpreis / jahreskaltmiete : 0;

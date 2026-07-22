@@ -2,6 +2,8 @@
 // Reine Funktionen ohne Seiteneffekte - von Store UND Tests genutzt.
 import type { Scenario } from './types';
 
+export const CONSERVATIVE_BODENWERT_ANTEIL_PCT = 30;
+
 export interface CashInvestmentBreakdown {
   enteredEquity: number;
   financedKnk: number;
@@ -19,11 +21,12 @@ export function knkAmount(s: Scenario): number {
 
 /**
  * Fuer den Bodenwert massgebliche Flaeche in m2: anteilige Grundstuecksflaeche
- * (Grundstueck x Miteigentumsanteil laut Teilungserklaerung). Solange keine
- * Grundstuecksflaeche erfasst ist, dient die Wohnflaeche als grobe Naeherung.
+ * (Grundstueck x Miteigentumsanteil laut Teilungserklaerung). Unvollstaendige
+ * Bodenrichtwertdaten liefern 0; fuer die Bewertung greift separat der konservative
+ * Prozent-Fallback, damit Wohnflaeche nie als Grundstuecksflaeche missverstanden wird.
  */
 export function bodenwertFlaeche(s: Scenario): number {
-  const { grundstuecksflaeche, miteigentumsanteilZaehler, miteigentumsanteilNenner, wohnflaeche } = s.objekt;
+  const { grundstuecksflaeche, miteigentumsanteilZaehler, miteigentumsanteilNenner } = s.objekt;
   if (
     grundstuecksflaeche > 0
     && miteigentumsanteilZaehler > 0
@@ -32,12 +35,20 @@ export function bodenwertFlaeche(s: Scenario): number {
   ) {
     return grundstuecksflaeche * (miteigentumsanteilZaehler / miteigentumsanteilNenner);
   }
-  return wohnflaeche;
+  return 0;
+}
+
+/** Sind Bodenrichtwert, Gesamtgrundstueck und ein gueltiger MEA vollstaendig erfasst? */
+export function hasCompleteBodenrichtwertInputs(s: Scenario): boolean {
+  return s.objekt.bodenrichtwertProSqm > 0 && bodenwertFlaeche(s) > 0;
 }
 
 /** Effektiver Bodenwert in EUR aus Prozent oder Bodenrichtwert pro m2. */
 export function landValueAmount(s: Scenario): number {
   if (s.objekt.bodenwertMode === 'perSqm') {
+    if (!hasCompleteBodenrichtwertInputs(s)) {
+      return (s.objekt.kaufpreis * CONSERVATIVE_BODENWERT_ANTEIL_PCT) / 100;
+    }
     return Math.min(
       s.objekt.kaufpreis,
       Math.max(0, s.objekt.bodenrichtwertProSqm * bodenwertFlaeche(s))

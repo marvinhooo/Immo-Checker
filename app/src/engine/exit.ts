@@ -9,7 +9,8 @@ export interface ExitResult {
   verkaufsnebenkosten: number;
   restschuld: number;
   vorfaelligkeitsEntschaedigung: number;
-  nettoVerkaufserloes: number; // before Spekulationssteuer
+  ruecklagenRestwert: number;
+  nettoVerkaufserloes: number; // vor Spekulationssteuer; Ruecklagen-Preiswirkung steckt ggf. im Verkaufspreis
   aktivierteSanierungskosten: number;
   spekulationsGewinn: number;
   spekulationssteuer: number;
@@ -30,8 +31,15 @@ export function calculateExit(scenario: Scenario, projection?: ProjectionResult)
   // Finde das Jahr h (oder das letzte verfügbare Jahr der Projektion)
   const yearData = proj.years.find(y => y.jahr === h) || proj.years[proj.years.length - 1];
 
-  const verkaufspreis = yearData.immobilienwert;
   const restschuld = yearData.restschuld;
+  // Die Projektion liefert den nach etwaigen modellierten Verwendungen verbleibenden Bestand.
+  // Ein positiver konfigurierter Anteil ist nur eine geschaetzte Marktpreiswirkung:
+  // Es gibt keinen separaten Auszahlungsanspruch gegen die WEG. Deshalb wird die Wirkung
+  // in den Verkaufspreis einbezogen und ist auch Basis prozentualer Verkaufskosten sowie
+  // eines etwaigen Gewinns nach § 23 EStG.
+  const ruecklagenRestwertPct = Math.min(100, Math.max(0, scenario.kosten.ruecklagenRestwertPct ?? 0));
+  const ruecklagenRestwert = yearData.kumulierteRuecklage * (ruecklagenRestwertPct / 100);
+  const verkaufspreis = yearData.immobilienwert + ruecklagenRestwert;
 
   const verkaufsnebenkosten = scenario.exit.verkaufsnebenkostenMode === 'absolute'
     ? Math.max(0, scenario.exit.verkaufsnebenkostenAbsolut)
@@ -42,7 +50,10 @@ export function calculateExit(scenario: Scenario, projection?: ProjectionResult)
     ? (restschuld * scenario.exit.vorfaelligkeitPct) / 100
     : 0;
 
-  const nettoVerkaufserloes = verkaufspreis - verkaufsnebenkosten - restschuld - vorfaelligkeitsEntschaedigung;
+  const nettoVerkaufserloes = verkaufspreis
+    - verkaufsnebenkosten
+    - restschuld
+    - vorfaelligkeitsEntschaedigung;
 
   // Spekulationssteuer nach § 23 Abs. 1 Nr. 1 EStG: steuerpflichtig, wenn der Zeitraum
   // zwischen Anschaffung und Veraeusserung nicht mehr als zehn Jahre betraegt.
@@ -94,6 +105,7 @@ export function calculateExit(scenario: Scenario, projection?: ProjectionResult)
     verkaufsnebenkosten,
     restschuld,
     vorfaelligkeitsEntschaedigung,
+    ruecklagenRestwert,
     nettoVerkaufserloes,
     aktivierteSanierungskosten,
     spekulationsGewinn,

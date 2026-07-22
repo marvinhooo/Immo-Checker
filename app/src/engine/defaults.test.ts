@@ -24,8 +24,10 @@ describe('createDefaultScenario', () => {
     expect(scenario.objekt.wohnflaeche).toBe(70);
     expect(scenario.objekt.bundesland).toBe('SN');
     expect(scenario.objekt.bodenwertMode).toBe('perSqm');
-    expect(scenario.objekt.bodenwertAnteilPct).toBe(35);
+    expect(scenario.objekt.bodenwertAnteilPct).toBe(30);
     expect(scenario.objekt.bodenrichtwertProSqm).toBe(1500);
+    expect(scenario.objekt.miteigentumsanteilZaehler).toBe(0);
+    expect(scenario.objekt.miteigentumsanteilNenner).toBe(0);
     expect(scenario.finanzierung.sollzinsPct).toBe(4.2);
     expect(scenario.finanzierung.tilgungPct).toBe(2);
     expect(scenario.miete.steigerungen).toEqual([]);
@@ -39,5 +41,12 @@ describe('createDefaultScenario', () => {
     expect(scenario.notizen).toBe('');
     expect(scenario.sanierungen).toEqual([]);
     expect(scenario.kosten.instandhaltungProSqm).toBe(20);
+    expect(scenario.kosten.kostenErfassungMode).toBe('detailliert');
+    expect(scenario.kosten.umlagefaehigeKostenProJahr).toBe(0);
+    expect(scenario.kosten.nichtUmlagefaehigeKostenProJahr).toBe(0);
+    expect(scenario.kosten.wegRuecklageProJahr).toBe(0);
+    expect(scenario.kosten.ruecklagenVerwendungPct).toBe(50);
+    expect(scenario.kosten.ruecklagenVerzoegerungJahre).toBe(5);
+    expect(scenario.kosten.ruecklagenRestwertPct).toBe(0);
   });
 });

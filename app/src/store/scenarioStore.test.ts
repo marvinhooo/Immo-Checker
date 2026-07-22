@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useScenarioStore } from './scenarioStore';
 import { createDefaultScenario } from '../engine/defaults';
+import { SCHEMA_VERSION } from '../engine/types';
 import { pullScenarios } from '../lib/sync';
 import {
   knkAmount,
@@ -37,7 +38,7 @@ describe('scenarioStore', () => {
   it('loads a default scenario', () => {
     const { active } = useScenarioStore.getState();
     expect(active.objekt.kaufpreis).toBe(300000);
-    expect(active.schemaVersion).toBe(2);
+    expect(active.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
   it('updates a field immutably via updateActive', () => {
@@ -274,6 +275,9 @@ describe('derive helpers', () => {
     s.objekt.bodenwertMode = 'perSqm';
     s.objekt.bodenrichtwertProSqm = 1000;
     s.objekt.bodenwertAnteilPct = 0;
+    s.objekt.grundstuecksflaeche = 70;
+    s.objekt.miteigentumsanteilZaehler = 1;
+    s.objekt.miteigentumsanteilNenner = 1;
 
     expect(landValueAmount(s)).toBeCloseTo(70000, 2);
     expect(effectiveBodenwertAnteilPct(s)).toBeCloseTo(23.333333, 5);

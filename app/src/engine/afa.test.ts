@@ -69,6 +69,9 @@ describe('afa engine - projectAfa', () => {
         bodenwertMode: 'perSqm',
         bodenwertAnteilPct: 0,
         bodenrichtwertProSqm: 1000,
+        grundstuecksflaeche: 70,
+        miteigentumsanteilZaehler: 1,
+        miteigentumsanteilNenner: 1,
         sanierungskosten: 0,
       },
       knk: {

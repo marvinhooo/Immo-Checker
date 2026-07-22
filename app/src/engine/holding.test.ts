@@ -30,6 +30,7 @@ describe('Holding-period analysis (Story 13)', () => {
     // Identity: holding-row for the chosen year == single-exit result (< 1 EUR tolerance)
     expect(row.nettoVerkaufserloesNachSteuer).toBeCloseTo(exitRes.nettoVerkaufserloesNachSteuer, 0);
     expect(row.restschuld).toBeCloseTo(exitRes.restschuld, 0);
+    expect(row.ruecklagenRestwert).toBeCloseTo(exitRes.ruecklagenRestwert, 2);
     expect(row.spekulationssteuer).toBeCloseTo(exitRes.spekulationssteuer, 0);
     // IRR matches the metrics IRR for the same horizon
     expect(row.irrPct).toBeCloseTo(metrics.irr, 4);

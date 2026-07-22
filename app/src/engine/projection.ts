@@ -19,8 +19,13 @@ export interface ProjectionYear {
   instandhaltung: number;
   verwaltung: number;
   sonstigeKosten: number;
-  bewirtschaftungskosten: number; // Summe der nicht-umlagefähigen Kosten
-  ruecklagenZufuehrung: number; // Anteil der Instandhaltung, der Cash-out, aber nicht sofort abziehbar ist
+  umlagefaehigeKosten: number;
+  leerstandsbedingteUmlagekosten: number;
+  nichtUmlagefaehigeKosten: number;
+  bewirtschaftungskosten: number; // Eigentuemer-Cashout inkl. Ruecklage und ggf. Leerstandsanteil
+  ruecklagenZufuehrung: number; // Cash-out, aber nicht sofort abziehbar
+  ruecklagenEntnahme: number; // erwartete Verwendung aus der WEG-Ruecklage; kein erneuter Cash-out
+  ruecklagenWerbungskosten: number; // erwarteter nachgelagerter Werbungskostenabzug
   
   // Finanzierung (Jahreswerte)
   zins: number;
@@ -58,6 +63,7 @@ export interface ProjectionYear {
   kumulierterCashflowNachSteuer: number;
   kumulierteSteuerersparnis: number;
   kumulierteSondertilgung: number;
+  kumulierteRuecklage: number; // Zufuehrungen abzueglich modellierter WEG-Verwendungen
   kumuliertesEigenkapital: number; // Eingesetztes Eigenkapital (initial + kumulierte Sondertilgung)
 }
 
@@ -101,7 +107,13 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
   const bruttoRents = rentProjection.map(r => r.bruttoKaltmiete);
 
   // 3. Kostenprojektion berechnen
-  const costProjection = projectCosts(scenario.kosten, scenario.objekt.wohnflaeche, bruttoRents, safeYears);
+  const costProjection = projectCosts(
+    scenario.kosten,
+    scenario.objekt.wohnflaeche,
+    bruttoRents,
+    safeYears,
+    scenario.miete.leerstandPct,
+  );
 
   // 4. AfA-Projektion berechnen
   const afaProjection = projectAfa(scenario, safeYears);
@@ -116,6 +128,7 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
   let runningCashflowNachSteuer = 0;
   let runningSteuerersparnis = 0;
   let runningSondertilgung = 0;
+  let runningRuecklage = 0;
 
   for (let t = 1; t <= safeYears; t++) {
     const idx = t - 1;
@@ -128,6 +141,9 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
     const instandhaltung = costProjection[idx]?.instandhaltung || 0;
     const verwaltung = costProjection[idx]?.verwaltung || 0;
     const sonstigeKosten = costProjection[idx]?.sonstigeKosten || 0;
+    const umlagefaehigeKosten = costProjection[idx]?.umlagefaehigeKosten || 0;
+    const leerstandsbedingteUmlagekosten = costProjection[idx]?.leerstandsbedingteUmlagekosten || 0;
+    const nichtUmlagefaehigeKosten = costProjection[idx]?.nichtUmlagefaehigeKosten || 0;
     const bewirtschaftungskosten = costProjection[idx]?.summeKosten || 0;
 
     // Amortization (Zins & Tilgung)
@@ -146,9 +162,22 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
     // V&V Ergebnis & Steuereffekt
     // Ruecklagenzufuehrungen (z. B. WEG-Erhaltungsruecklage) sind Cash-out, aber erst bei
     // Verausgabung als Werbungskosten abziehbar - sie mindern das V&V-Ergebnis nicht.
-    const ruecklagenZufuehrung = instandhaltung * ((scenario.kosten.ruecklagenAnteilPct ?? 0) / 100);
-    const abziehbareBewirtschaftungskosten = bewirtschaftungskosten - ruecklagenZufuehrung;
-    const vvErgebnis = nettoKaltmiete - zins - afa - abziehbareBewirtschaftungskosten - sanierungsWerbungskosten;
+    const ruecklagenZufuehrung = costProjection[idx]?.wegRuecklage || 0;
+    const wirtschaftsplanMode = (scenario.kosten.kostenErfassungMode ?? 'detailliert') === 'wirtschaftsplan';
+    const ruecklagenVerwendungPct = Math.min(100, Math.max(0, scenario.kosten.ruecklagenVerwendungPct ?? 50));
+    const ruecklagenVerzoegerungJahre = Math.max(1, Math.trunc(scenario.kosten.ruecklagenVerzoegerungJahre ?? 5));
+    const sourceIndex = idx - ruecklagenVerzoegerungJahre;
+    const ruecklagenEntnahme = wirtschaftsplanMode && sourceIndex >= 0
+      ? (costProjection[sourceIndex]?.wegRuecklage || 0) * (ruecklagenVerwendungPct / 100)
+      : 0;
+    const ruecklagenWerbungskosten = ruecklagenEntnahme;
+    const abziehbareBewirtschaftungskosten = costProjection[idx]?.sofortAbziehbareKosten || 0;
+    const vvErgebnis = nettoKaltmiete
+      - zins
+      - afa
+      - abziehbareBewirtschaftungskosten
+      - ruecklagenWerbungskosten
+      - sanierungsWerbungskosten;
     const steuereffekt = calculateTaxEffect(scenario, vvErgebnis);
 
     // Cashflow vor & nach Steuer
@@ -183,6 +212,7 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
     const steuerersparnis = steuereffekt < 0 ? -steuereffekt : 0;
     runningSteuerersparnis += steuerersparnis;
     runningSondertilgung += sondertilgung;
+    runningRuecklage = Math.max(0, runningRuecklage + ruecklagenZufuehrung - ruecklagenEntnahme);
 
     years.push({
       jahr: t,
@@ -192,8 +222,13 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
       instandhaltung,
       verwaltung,
       sonstigeKosten,
+      umlagefaehigeKosten,
+      leerstandsbedingteUmlagekosten,
+      nichtUmlagefaehigeKosten,
       bewirtschaftungskosten,
       ruecklagenZufuehrung,
+      ruecklagenEntnahme,
+      ruecklagenWerbungskosten,
       zins,
       tilgung,
       sondertilgung,
@@ -217,6 +252,7 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
       kumulierterCashflowNachSteuer: runningCashflowNachSteuer,
       kumulierteSteuerersparnis: runningSteuerersparnis,
       kumulierteSondertilgung: runningSondertilgung,
+      kumulierteRuecklage: runningRuecklage,
       kumuliertesEigenkapital: initEquity + runningSondertilgung,
     });
   }

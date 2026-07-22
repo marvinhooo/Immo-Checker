@@ -498,11 +498,18 @@ BEGIN
         '/miete/mietspiegel/mittelwertProSqm',
         '/miete/mietspiegel/obererSpannwertProSqm',
         '/miete/steigerungen',
+        '/kosten/kostenErfassungMode',
+        '/kosten/umlagefaehigeKostenProJahr',
+        '/kosten/nichtUmlagefaehigeKostenProJahr',
+        '/kosten/wegRuecklageProJahr',
+        '/kosten/ruecklagenVerwendungPct',
+        '/kosten/ruecklagenVerzoegerungJahre',
         '/kosten/maintenanceMode',
         '/kosten/instandhaltungProSqm',
         '/kosten/instandhaltungPctRent',
         '/kosten/instandhaltungAbsolut',
         '/kosten/ruecklagenAnteilPct',
+        '/kosten/ruecklagenRestwertPct',
         '/kosten/verwaltungProJahr',
         '/kosten/sonstigeKostenProJahr',
         '/kosten/kostensteigerungPctPa',
@@ -599,6 +606,12 @@ BEGIN
       THEN
         RETURN false;
       END IF;
+    ELSIF path_value = '/kosten/kostenErfassungMode' THEN
+      IF jsonb_typeof(operation -> 'value') <> 'string'
+        OR operation ->> 'value' NOT IN ('detailliert', 'wirtschaftsplan')
+      THEN
+        RETURN false;
+      END IF;
     ELSIF path_value = '/steuer/taxMode' THEN
       IF jsonb_typeof(operation -> 'value') <> 'string'
         OR operation ->> 'value' NOT IN ('income', 'marginalRate')
@@ -667,6 +680,8 @@ BEGIN
         '/miete/leerstandPct',
         '/kosten/instandhaltungPctRent',
         '/kosten/ruecklagenAnteilPct',
+        '/kosten/ruecklagenRestwertPct',
+        '/kosten/ruecklagenVerwendungPct',
         '/kosten/kostensteigerungPctPa',
         '/steuer/grenzsteuersatzPct',
         '/steuer/kirchensteuerPct',
@@ -700,6 +715,12 @@ BEGIN
       ) THEN
         RETURN false;
       ELSIF path_value = '/exit/haltedauerJahre' AND (
+        numeric_value <> trunc(numeric_value)
+        OR numeric_value < 1
+        OR numeric_value > 40
+      ) THEN
+        RETURN false;
+      ELSIF path_value = '/kosten/ruecklagenVerzoegerungJahre' AND (
         numeric_value <> trunc(numeric_value)
         OR numeric_value < 1
         OR numeric_value > 40

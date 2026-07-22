@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultScenario } from './defaults';
+import { knkAmount } from './derive';
 import { runProjection } from './projection';
 import { computeIRR, calculateMetrics, findBreakEvenRent, findBreakEvenInterestRate } from './metrics';
 
@@ -57,6 +58,112 @@ describe('Metrics Engine', () => {
       // Break-even points should be calculated
       expect(metrics.breakEvenRent).toBeGreaterThan(0);
       expect(metrics.breakEvenInterestRate).toBeGreaterThan(0);
+    });
+
+    it('uses the complete Wirtschaftsplan owner cashout for net rental yield', () => {
+      const scenario = createDefaultScenario({
+        objekt: { kaufpreis: 60000 },
+        miete: {
+          rentMode: 'perMonth',
+          kaltmieteProMonat: 211,
+          kaltmieteProJahr: 2532,
+          leerstandPct: 3,
+          steigerungen: [],
+        },
+        kosten: {
+          kostenErfassungMode: 'wirtschaftsplan',
+          umlagefaehigeKostenProJahr: 1194.99,
+          nichtUmlagefaehigeKostenProJahr: 554.06,
+          wegRuecklageProJahr: 456,
+          kostensteigerungPctPa: 0,
+        },
+      });
+      const projection = runProjection(scenario);
+      const metrics = calculateMetrics(scenario, projection);
+
+      expect(projection.years[0].bewirtschaftungskosten).toBeCloseTo(1045.9097, 6);
+      expect(metrics.nettomietrendite).toBeCloseTo(
+        ((2532 * 0.97 - 1045.9097) / (60000 + knkAmount(scenario))) * 100,
+        6,
+      );
+    });
+
+    it('applies an explicitly selected 100 percent price-effect sensitivity without double counting', () => {
+      const base = createDefaultScenario({
+        objekt: { kaufpreis: 100000 },
+        knk: {
+          grestPct: 0,
+          notarPct: 0,
+          maklerPct: 0,
+          mitfinanzieren: false,
+          finanzierungsPct: 0,
+        },
+        finanzierung: {
+          equityMode: 'percent',
+          equityPct: 100,
+          equityAbsolute: 0,
+          sollzinsPct: 0,
+          tilgungPct: 0,
+          zinsbindungJahre: 10,
+          anschlusszinsPct: 0,
+          anschlussTilgungPct: null,
+          sondertilgungProJahr: 0,
+          disagioPct: 0,
+        },
+        miete: {
+          rentMode: 'perMonth',
+          kaltmieteProMonat: 0,
+          kaltmieteProJahr: 0,
+          kaltmieteProSqm: 0,
+          leerstandPct: 0,
+          steigerungen: [],
+        },
+        kosten: {
+          maintenanceMode: 'absolute',
+          instandhaltungProSqm: 0,
+          instandhaltungPctRent: 0,
+          instandhaltungAbsolut: 0,
+          ruecklagenAnteilPct: 0,
+          verwaltungProJahr: 0,
+          sonstigeKostenProJahr: 0,
+          kostensteigerungPctPa: 0,
+        },
+        steuer: {
+          taxMode: 'marginalRate',
+          bruttoJahresEinkommen: 0,
+          grenzsteuersatzPct: 0,
+          veranlagung: 'single',
+          soli: false,
+          kirchensteuerPct: 0,
+        },
+        afa: { modus: 'linear', linearSatzPct: 0 },
+        wertentwicklung: { szenario: [] },
+        exit: {
+          haltedauerJahre: 2,
+          verkaufsnebenkostenMode: 'percent',
+          verkaufsnebenkostenPct: 0,
+          verkaufsnebenkostenAbsolut: 0,
+          vorfaelligkeitPct: 0,
+        },
+      });
+      const withReserve = createDefaultScenario({
+        ...base,
+        kosten: {
+          ...base.kosten,
+          instandhaltungAbsolut: 1000,
+          ruecklagenAnteilPct: 100,
+          ruecklagenRestwertPct: 100,
+        },
+      });
+
+      const baseMetrics = calculateMetrics(base);
+      const reserveProjection = runProjection(withReserve);
+      const reserveMetrics = calculateMetrics(withReserve, reserveProjection);
+
+      expect(reserveProjection.years.map((year) => year.cashflowNachSteuer)).toEqual([-1000, -1000]);
+      expect(reserveProjection.years[1].kumulierteRuecklage).toBe(2000);
+      expect(baseMetrics.irr).toBeCloseTo(0, 4);
+      expect(reserveMetrics.irr).toBeCloseTo(baseMetrics.irr, 4);
     });
   });
 

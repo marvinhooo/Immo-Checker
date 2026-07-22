@@ -1,7 +1,7 @@
 // Zentrales Eingabe-Datenmodell des Immobilien-Investment-Checkers.
 // Reine Typdefinitionen - keine Logik, keine UI. Wird von Engine, Store und UI geteilt.
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export type Bundesland =
   | 'BW' | 'BY' | 'BE' | 'BB' | 'HB' | 'HH' | 'HE' | 'MV'
@@ -17,6 +17,7 @@ export type VerkaufsnebenkostenMode = 'percent' | 'absolute';
 export type EquityMode = 'percent' | 'absolute';
 export type RentMode = 'perMonth' | 'perYear' | 'perSqm';
 export type MaintenanceMode = 'perSqm' | 'percentRent' | 'absolute';
+export type KostenErfassungMode = 'detailliert' | 'wirtschaftsplan';
 export type TaxMode = 'income' | 'marginalRate';
 export type Veranlagung = 'single' | 'splitting';
 export type SanierungSteuerart =
@@ -59,9 +60,9 @@ export interface ObjektInput {
   bodenwertMode: BodenwertMode; // Prozent direkt oder Bodenrichtwert EUR/m2
   bodenwertAnteilPct: number; // % des Kaufpreises auf Grund und Boden (NICHT abschreibbar)
   bodenrichtwertProSqm: number; // EUR/m2, bezogen auf die anteilige Grundstuecksflaeche
-  grundstuecksflaeche: number; // m2 Gesamtgrundstueck laut Grundbuch/Teilungserklaerung; 0 = unbekannt -> Naeherung ueber Wohnflaeche
-  miteigentumsanteilZaehler: number; // MEA laut Teilungserklaerung, z. B. 57 (bei 57/1000)
-  miteigentumsanteilNenner: number; // MEA-Nenner, z. B. 1000; 1/1 = Alleineigentum am Grundstueck
+  grundstuecksflaeche: number; // m2 Gesamtgrundstueck laut Grundbuch/Teilungserklaerung; 0 = unbekannt -> konservativer 30-%-Bodenanteil
+  miteigentumsanteilZaehler: number; // MEA laut Teilungserklaerung, z. B. 57 (bei 57/1000); 0 = unbekannt
+  miteigentumsanteilNenner: number; // MEA-Nenner, z. B. 1000; 0 = unbekannt, 1/1 = bestaetigtes Alleineigentum
   sanierungskosten: number; // EUR, Denkmal-/Modernisierungs-Topf (§7i)
 }
 
@@ -103,11 +104,18 @@ export interface MieteInput {
 }
 
 export interface KostenInput {
+  kostenErfassungMode?: KostenErfassungMode; // detaillierte Schaetzung oder direkte Summen aus dem WEG-Wirtschaftsplan
+  umlagefaehigeKostenProJahr?: number; // EUR/Jahr laut Wirtschaftsplan; bei Leerstand anteilig Eigentuemer-Cashout
+  nichtUmlagefaehigeKostenProJahr?: number; // EUR/Jahr laut Wirtschaftsplan; im vereinfachten Modell laufend sofort abziehbar
+  wegRuecklageProJahr?: number; // EUR/Jahr Zufuehrung zur WEG-Erhaltungsruecklage
+  ruecklagenVerwendungPct?: number; // erwarteter Anteil jeder WEG-Zufuehrung, der nach der Verzoegerung verwendet wird
+  ruecklagenVerzoegerungJahre?: number; // durchschnittliche Jahre zwischen Zufuehrung und steuerlich modellierter Verwendung
   maintenanceMode: MaintenanceMode;
   instandhaltungProSqm: number; // EUR/m2/Jahr (maintenanceMode = 'perSqm')
   instandhaltungPctRent: number; // % der Jahreskaltmiete (maintenanceMode = 'percentRent')
   instandhaltungAbsolut: number; // EUR/Jahr (maintenanceMode = 'absolute')
   ruecklagenAnteilPct: number; // % der Instandhaltung, der WEG-Ruecklagenzufuehrung + kalkulatorische Reserve ist (Cash-out, aber nicht sofort als Werbungskosten abziehbar)
+  ruecklagenRestwertPct?: number; // % des kumulierten Bestands als geschaetzte Marktpreiswirkung beim Exit (Default: 0; kein separates Guthaben)
   verwaltungProJahr: number; // nicht-umlagefaehig, EUR/Jahr
   sonstigeKostenProJahr: number; // nicht-umlagefaehig, EUR/Jahr
   kostensteigerungPctPa: number; // % p. a. auf laufende Kosten

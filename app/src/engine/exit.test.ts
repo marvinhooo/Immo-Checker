@@ -74,6 +74,75 @@ describe('Exit calculation Engine', () => {
     );
   });
 
+  it('treats a configurable reserve exit value as a market-price effect', () => {
+    const base = createDefaultScenario({
+      kosten: {
+        maintenanceMode: 'absolute',
+        instandhaltungProSqm: 0,
+        instandhaltungPctRent: 0,
+        instandhaltungAbsolut: 1000,
+        ruecklagenAnteilPct: 0,
+        verwaltungProJahr: 0,
+        sonstigeKostenProJahr: 0,
+        kostensteigerungPctPa: 0,
+      },
+      steuer: {
+        taxMode: 'marginalRate',
+        bruttoJahresEinkommen: 0,
+        grenzsteuersatzPct: 0,
+        veranlagung: 'single',
+        soli: false,
+        kirchensteuerPct: 0,
+      },
+      wertentwicklung: {
+        szenario: [{ id: 'growth', kind: 'rate', fromYear: 1, percentPerYear: 10 }],
+      },
+      exit: {
+        haltedauerJahre: 2,
+        verkaufsnebenkostenMode: 'percent',
+        verkaufsnebenkostenPct: 3,
+        verkaufsnebenkostenAbsolut: 0,
+        vorfaelligkeitPct: 0,
+      },
+    });
+    const withReserve = createDefaultScenario({
+      ...base,
+      kosten: { ...base.kosten, ruecklagenAnteilPct: 85 },
+    });
+    const withPartialExitValue = createDefaultScenario({
+      ...withReserve,
+      kosten: { ...withReserve.kosten, ruecklagenRestwertPct: 40 },
+    });
+
+    const withoutReserveExit = calculateExit(base, runProjection(base));
+    const reserveProjection = runProjection(withReserve);
+    const withReserveExit = calculateExit(withReserve, reserveProjection);
+    const withPartialExitValueExit = calculateExit(withPartialExitValue, runProjection(withPartialExitValue));
+
+    // 2 Jahre × 1.000 EUR × 85 % = 1.700 EUR unverbrauchter nominaler Bestand.
+    expect(reserveProjection.years[1].kumulierteRuecklage).toBe(1700);
+    expect(withReserveExit.ruecklagenRestwert).toBe(0);
+    expect(withReserveExit.nettoVerkaufserloes).toBeCloseTo(withoutReserveExit.nettoVerkaufserloes, 2);
+    // Bei expliziten 40 % werden 680 EUR als geschaetzte Preiswirkung angesetzt.
+    expect(withPartialExitValueExit.ruecklagenRestwert).toBe(680);
+    expect(withPartialExitValueExit.verkaufspreis).toBeCloseTo(
+      withoutReserveExit.verkaufspreis + 680,
+      2,
+    );
+    expect(withPartialExitValueExit.verkaufsnebenkosten).toBeCloseTo(
+      withoutReserveExit.verkaufsnebenkosten + 680 * 0.03,
+      2,
+    );
+    expect(withPartialExitValueExit.nettoVerkaufserloes).toBeCloseTo(
+      withoutReserveExit.nettoVerkaufserloes + 680 * 0.97,
+      2,
+    );
+    expect(withPartialExitValueExit.spekulationsGewinn).toBeCloseTo(
+      withoutReserveExit.spekulationsGewinn + 680 * 0.97,
+      2,
+    );
+  });
+
   it('deducts flat sale costs from a taxable speculation gain', () => {
     const scenario = createDefaultScenario({
       exit: {
@@ -135,17 +204,17 @@ describe('Exit calculation Engine', () => {
     // purchaseCostBasis = 331,710
     // verkaufspreis after 5 years of 3% growth = 300,000 * (1.03)^5 = 347,782.20
     // kumulierte AfA for 5 years:
-    // buildingBasis = (300,000 + 31,710) * 65% = 215,611.50
-    // afaSatz = 2% (fertigstellungsjahr 1995) -> 4,312.23 / year
-    // 5 years afa = 21,561.15
-    // Gewinn = 347,782.20 - 2% Verkaufsnebenkosten - Vorfaelligkeit - 331,710 + 21,561.15
+    // Der unvollstaendige Bodenrichtwert-Modus nutzt konservativ 30 % Bodenanteil.
+    // Gewinn = Verkaufspreis - Verkaufskosten - Vorfaelligkeit - Anschaffungskosten
+    //          + tatsaechlich modellierte kumulierte AfA.
+    const cumulativeAfa = projection.years.reduce((sum, year) => sum + year.afa, 0);
     expect(exitRes.spekulationsGewinn).toBeGreaterThan(27000);
     expect(exitRes.spekulationsGewinn).toBeCloseTo(
       exitRes.verkaufspreis
         - exitRes.verkaufsnebenkosten
         - exitRes.vorfaelligkeitsEntschaedigung
         - (300000 + 31710)
-        + 21561.15,
+        + cumulativeAfa,
       0
     );
     expect(exitRes.spekulationssteuer).toBeCloseTo(exitRes.spekulationsGewinn * 0.40, 2);

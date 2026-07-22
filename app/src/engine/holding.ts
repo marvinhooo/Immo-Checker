@@ -9,6 +9,7 @@ export interface HoldingYearAnalysis {
   restschuld: number;
   verkaufsnebenkosten: number;
   vorfaelligkeit: number;
+  ruecklagenRestwert: number;
   nettoVerkaufserloes: number; // vor Spekulationssteuer
   spekulationsGewinn: number;
   spekulationssteuer: number;
@@ -96,6 +97,7 @@ export function analyzeHoldingPeriods(scenario: Scenario): HoldingAnalysis {
       restschuld: exitT.restschuld,
       verkaufsnebenkosten: exitT.verkaufsnebenkosten,
       vorfaelligkeit: exitT.vorfaelligkeitsEntschaedigung,
+      ruecklagenRestwert: exitT.ruecklagenRestwert,
       nettoVerkaufserloes: exitT.nettoVerkaufserloes,
       spekulationsGewinn: exitT.spekulationsGewinn,
       spekulationssteuer: exitT.spekulationssteuer,

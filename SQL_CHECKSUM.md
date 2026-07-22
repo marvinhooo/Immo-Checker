@@ -1,10 +1,10 @@
 # SQL-Pruefsumme
 
-Stand: 2026-07-17
+Stand: 2026-07-22
 
 | Datei | Verfahren | Pruefsumme |
 | --- | --- | --- |
-| `supabase-agent-mcp.sql` | SHA-256 | `198ac29b588ded845d76d9e33a344074af639d280900443f0e83e5b28963d952` |
+| `supabase-agent-mcp.sql` | SHA-256 | `0ffcce1e992f348e815bedcd3748616bac793d39f92810595adde1feeda21df3` |
 
 Diese Pruefsumme kennzeichnet den fuer die Staging-Migration vorbereiteten SQL-Stand.
 

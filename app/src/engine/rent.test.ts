@@ -244,4 +244,42 @@ describe('rent engine - projectCosts', () => {
     expect(projection[1].sonstigeKosten).toBeCloseTo(103, 4);
     expect(projection[1].summeKosten).toBeCloseTo(1609, 4);
   });
+
+  it('maps Wirtschaftsplan sums and charges the vacancy share of apportionable costs', () => {
+    const input: KostenInput = {
+      kostenErfassungMode: 'wirtschaftsplan',
+      umlagefaehigeKostenProJahr: 1194.99,
+      nichtUmlagefaehigeKostenProJahr: 554.06,
+      wegRuecklageProJahr: 456,
+      ruecklagenVerwendungPct: 50,
+      ruecklagenVerzoegerungJahre: 5,
+      maintenanceMode: 'absolute',
+      instandhaltungProSqm: 0,
+      instandhaltungPctRent: 0,
+      instandhaltungAbsolut: 9999,
+      ruecklagenAnteilPct: 85,
+      verwaltungProJahr: 9999,
+      sonstigeKostenProJahr: 9999,
+      kostensteigerungPctPa: 2,
+    };
+
+    const projection = projectCosts(input, 40.55, [3600, 3600], 2, 3);
+    const year1 = projection[0];
+
+    expect(year1.umlagefaehigeKosten).toBeCloseTo(1194.99, 6);
+    expect(year1.leerstandsbedingteUmlagekosten).toBeCloseTo(35.8497, 6);
+    expect(year1.nichtUmlagefaehigeKosten).toBeCloseTo(554.06, 6);
+    expect(year1.wegRuecklage).toBeCloseTo(456, 6);
+    expect(year1.sofortAbziehbareKosten).toBeCloseTo(589.9097, 6);
+    expect(year1.summeKosten).toBeCloseTo(1045.9097, 6);
+    // Inaktive Detailwerte werden im Wirtschaftsplan-Modus nicht mitgerechnet.
+    expect(year1.instandhaltung).toBe(0);
+    expect(year1.verwaltung).toBe(0);
+    expect(year1.sonstigeKosten).toBe(0);
+
+    expect(projection[1].umlagefaehigeKosten).toBeCloseTo(1194.99 * 1.02, 6);
+    expect(projection[1].nichtUmlagefaehigeKosten).toBeCloseTo(554.06 * 1.02, 6);
+    expect(projection[1].wegRuecklage).toBeCloseTo(456 * 1.02, 6);
+    expect(projection[1].summeKosten).toBeCloseTo(1045.9097 * 1.02, 6);
+  });
 });

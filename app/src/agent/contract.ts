@@ -69,11 +69,18 @@ export const AGENT_FIELD_DEFINITIONS = [
   { path: '/miete/mietspiegel/mittelwertProSqm', label: 'Mietspiegel Mittelwert', section: 'miete', valueType: 'number', unit: 'EUR/m2/Monat' },
   { path: '/miete/mietspiegel/obererSpannwertProSqm', label: 'Mietspiegel Obergrenze', section: 'miete', valueType: 'number', unit: 'EUR/m2/Monat' },
   { path: '/miete/steigerungen', label: 'Mietsteigerungsregeln', section: 'miete', valueType: 'array' },
+  { path: '/kosten/kostenErfassungMode', label: 'Kosten-Erfassungsmodus', section: 'kosten', valueType: 'enum' },
+  { path: '/kosten/umlagefaehigeKostenProJahr', label: 'Umlagefaehige Kosten', section: 'kosten', valueType: 'number', unit: 'EUR/Jahr' },
+  { path: '/kosten/nichtUmlagefaehigeKostenProJahr', label: 'Nicht umlagefaehige Kosten', section: 'kosten', valueType: 'number', unit: 'EUR/Jahr' },
+  { path: '/kosten/wegRuecklageProJahr', label: 'Zufuehrung WEG-Erhaltungsruecklage', section: 'kosten', valueType: 'number', unit: 'EUR/Jahr' },
+  { path: '/kosten/ruecklagenVerwendungPct', label: 'Erwartete Ruecklagenverwendung je Zufuehrung', section: 'kosten', valueType: 'number', unit: '%' },
+  { path: '/kosten/ruecklagenVerzoegerungJahre', label: 'Verzoegerung bis zur Ruecklagenverwendung', section: 'kosten', valueType: 'number', unit: 'Jahre' },
   { path: '/kosten/maintenanceMode', label: 'Instandhaltungs-Modus', section: 'kosten', valueType: 'enum' },
   { path: '/kosten/instandhaltungProSqm', label: 'Instandhaltung pro Quadratmeter', section: 'kosten', valueType: 'number', unit: 'EUR/m2/Jahr' },
   { path: '/kosten/instandhaltungPctRent', label: 'Instandhaltung als Mietanteil', section: 'kosten', valueType: 'number', unit: '%' },
   { path: '/kosten/instandhaltungAbsolut', label: 'Instandhaltung absolut', section: 'kosten', valueType: 'number', unit: 'EUR/Jahr' },
   { path: '/kosten/ruecklagenAnteilPct', label: 'Ruecklagen- und Reserveanteil', section: 'kosten', valueType: 'number', unit: '%' },
+  { path: '/kosten/ruecklagenRestwertPct', label: 'Ruecklagen-Preiswirkung beim Exit', section: 'kosten', valueType: 'number', unit: '%' },
   { path: '/kosten/verwaltungProJahr', label: 'Verwaltungskosten', section: 'kosten', valueType: 'number', unit: 'EUR/Jahr' },
   { path: '/kosten/sonstigeKostenProJahr', label: 'Sonstige laufende Kosten', section: 'kosten', valueType: 'number', unit: 'EUR/Jahr' },
   { path: '/kosten/kostensteigerungPctPa', label: 'Kostensteigerung', section: 'kosten', valueType: 'number', unit: '%/Jahr' },
@@ -136,12 +143,21 @@ export function requiredAgentFieldPaths(scenario: Scenario): string[] {
       : scenario.miete.rentMode === 'perSqm'
         ? '/miete/kaltmieteProSqm'
         : '/miete/kaltmieteProMonat',
-    '/kosten/maintenanceMode',
-    scenario.kosten.maintenanceMode === 'percentRent'
-      ? '/kosten/instandhaltungPctRent'
-      : scenario.kosten.maintenanceMode === 'absolute'
-        ? '/kosten/instandhaltungAbsolut'
-        : '/kosten/instandhaltungProSqm',
+    '/kosten/kostenErfassungMode',
+    ...((scenario.kosten.kostenErfassungMode ?? 'detailliert') === 'wirtschaftsplan'
+      ? [
+          '/kosten/umlagefaehigeKostenProJahr',
+          '/kosten/nichtUmlagefaehigeKostenProJahr',
+          '/kosten/wegRuecklageProJahr',
+        ]
+      : [
+          '/kosten/maintenanceMode',
+          scenario.kosten.maintenanceMode === 'percentRent'
+            ? '/kosten/instandhaltungPctRent'
+            : scenario.kosten.maintenanceMode === 'absolute'
+              ? '/kosten/instandhaltungAbsolut'
+              : '/kosten/instandhaltungProSqm',
+        ]),
     '/steuer/taxMode',
     scenario.steuer.taxMode === 'marginalRate'
       ? '/steuer/grenzsteuersatzPct'

@@ -9,6 +9,7 @@ const VERKAUFSNEBENKOSTEN_MODES = ['percent', 'absolute'] as const;
 const EQUITY_MODES = ['percent', 'absolute'] as const;
 const RENT_MODES = ['perMonth', 'perYear', 'perSqm'] as const;
 const MAINTENANCE_MODES = ['perSqm', 'percentRent', 'absolute'] as const;
+const KOSTEN_ERFASSUNG_MODES = ['detailliert', 'wirtschaftsplan'] as const;
 const TAX_MODES = ['income', 'marginalRate'] as const;
 const VERANLAGUNGEN = ['single', 'splitting'] as const;
 const AFA_MODI = ['linear', 'degressiv', 'sonder7b', 'denkmal7i'] as const;
@@ -25,6 +26,7 @@ const AGENT_SOURCE_KINDS = ['pdf', 'web', 'api', 'text', 'manual'] as const;
 const AGENT_FIELD_STATUSES = ['missing', 'uncertain', 'confirmed', 'not_applicable', 'conflict'] as const;
 const AGENT_FIELD_ORIGINS = ['extracted', 'inferred', 'assumption', 'derived', 'user'] as const;
 const LEGACY_SCHEMA_VERSION = 1;
+const PREVIOUS_SCHEMA_VERSION = 2;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -223,7 +225,11 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   requireString(s, 'id', prefix);
   requireString(s, 'name', prefix);
   const schemaVersion = requireNumber(s, 'schemaVersion', prefix);
-  if (schemaVersion !== LEGACY_SCHEMA_VERSION && schemaVersion !== SCHEMA_VERSION) {
+  if (
+    schemaVersion !== LEGACY_SCHEMA_VERSION
+    && schemaVersion !== PREVIOUS_SCHEMA_VERSION
+    && schemaVersion !== SCHEMA_VERSION
+  ) {
     throw new Error(`${prefix}Nicht unterstützte Schema-Version.`);
   }
   const isLegacySchema = schemaVersion === LEGACY_SCHEMA_VERSION;
@@ -324,12 +330,16 @@ export function validateScenario(s: unknown, index?: number): Scenario {
     requireLegacyFallback(isLegacySchema, 'miteigentumsanteilNenner', prefix);
   }
   const miteigentumsanteilZaehler = objekt.miteigentumsanteilZaehler === undefined || objekt.miteigentumsanteilZaehler === null
-    ? (objekt.miteigentumsanteilZaehler = 1)
-    : requireNumberInRange(objekt, 'miteigentumsanteilZaehler', 1, Number.MAX_SAFE_INTEGER, prefix);
+    ? (objekt.miteigentumsanteilZaehler = 0)
+    : requireNumberInRange(objekt, 'miteigentumsanteilZaehler', 0, Number.MAX_SAFE_INTEGER, prefix);
   const miteigentumsanteilNenner = objekt.miteigentumsanteilNenner === undefined || objekt.miteigentumsanteilNenner === null
-    ? (objekt.miteigentumsanteilNenner = 1)
-    : requireNumberInRange(objekt, 'miteigentumsanteilNenner', 1, Number.MAX_SAFE_INTEGER, prefix);
-  if (miteigentumsanteilZaehler > miteigentumsanteilNenner) {
+    ? (objekt.miteigentumsanteilNenner = 0)
+    : requireNumberInRange(objekt, 'miteigentumsanteilNenner', 0, Number.MAX_SAFE_INTEGER, prefix);
+  if (
+    miteigentumsanteilZaehler > 0
+    && miteigentumsanteilNenner > 0
+    && miteigentumsanteilZaehler > miteigentumsanteilNenner
+  ) {
     throw new Error(`${prefix}miteigentumsanteilZaehler darf miteigentumsanteilNenner nicht überschreiten.`);
   }
   requireNumberInRange(objekt, 'sanierungskosten', 0, Number.MAX_SAFE_INTEGER, prefix);
@@ -415,6 +425,31 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   validateIncreaseRules(miete.steigerungen, 'Mietsteigerungen', prefix);
 
   const kosten = requireSection(s, 'kosten', prefix);
+  const isPreWirtschaftsplanSchema = schemaVersion < 3;
+  if (kosten.kostenErfassungMode === undefined || kosten.kostenErfassungMode === null) {
+    if (!isPreWirtschaftsplanSchema) throw new Error(`${prefix}kostenErfassungMode fehlt.`);
+    kosten.kostenErfassungMode = 'detailliert';
+  } else {
+    requireEnum(kosten, 'kostenErfassungMode', KOSTEN_ERFASSUNG_MODES, prefix);
+  }
+  const additiveKostenDefaults = {
+    umlagefaehigeKostenProJahr: 0,
+    nichtUmlagefaehigeKostenProJahr: 0,
+    wegRuecklageProJahr: 0,
+    ruecklagenVerwendungPct: 50,
+    ruecklagenVerzoegerungJahre: 5,
+  } as const;
+  for (const [key, fallback] of Object.entries(additiveKostenDefaults)) {
+    if (kosten[key] === undefined || kosten[key] === null) {
+      if (!isPreWirtschaftsplanSchema) throw new Error(`${prefix}${key} fehlt.`);
+      kosten[key] = fallback;
+    }
+  }
+  requireNumberInRange(kosten, 'umlagefaehigeKostenProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
+  requireNumberInRange(kosten, 'nichtUmlagefaehigeKostenProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
+  requireNumberInRange(kosten, 'wegRuecklageProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
+  requireNumberInRange(kosten, 'ruecklagenVerwendungPct', 0, 100, prefix);
+  requireIntegerInRange(kosten, 'ruecklagenVerzoegerungJahre', 1, 40, prefix);
   requireEnum(kosten, 'maintenanceMode', MAINTENANCE_MODES, prefix);
   requireNumberInRange(kosten, 'instandhaltungProSqm', 0, Number.MAX_SAFE_INTEGER, prefix);
   requireNumberInRange(kosten, 'instandhaltungPctRent', 0, 100, prefix);
@@ -424,6 +459,12 @@ export function validateScenario(s: unknown, index?: number): Scenario {
     kosten.ruecklagenAnteilPct = 0;
   } else {
     requireNumberInRange(kosten, 'ruecklagenAnteilPct', 0, 100, prefix);
+  }
+  if (kosten.ruecklagenRestwertPct === undefined || kosten.ruecklagenRestwertPct === null) {
+    // Additives Schema-v2-Feld: auch bereits exportierte Version-2-Szenarien bleiben kompatibel.
+    kosten.ruecklagenRestwertPct = 0;
+  } else {
+    requireNumberInRange(kosten, 'ruecklagenRestwertPct', 0, 100, prefix);
   }
   requireNumberInRange(kosten, 'verwaltungProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
   requireNumberInRange(kosten, 'sonstigeKostenProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
@@ -519,7 +560,11 @@ export function importScenarios(jsonString: string): Scenario | Scenario[] {
     const obj = parsed as Record<string, unknown>;
     if (obj.type === 'immo-checker-export') {
       const exportVersion = requireNumber(obj, 'version', 'Bulk-Export: ');
-      if (exportVersion !== LEGACY_SCHEMA_VERSION && exportVersion !== SCHEMA_VERSION) {
+      if (
+        exportVersion !== LEGACY_SCHEMA_VERSION
+        && exportVersion !== PREVIOUS_SCHEMA_VERSION
+        && exportVersion !== SCHEMA_VERSION
+      ) {
         throw new Error('Bulk-Export hat eine nicht unterstützte Schema-Version.');
       }
       if (!Array.isArray(obj.scenarios)) {
@@ -574,8 +619,14 @@ export function exportToCSV(years: ProjectionYear[]): string {
     'Instandhaltung (€)',
     'Verwaltungskosten (€)',
     'Sonstige Kosten (€)',
+    'Umlagefähige Kosten laut Wirtschaftsplan (€)',
+    'davon Eigentümeranteil wegen Leerstand (€)',
+    'Nicht umlagefähige Kosten (€)',
     'Bewirtschaftungskosten gesamt (€)',
-    'davon Rücklage + kalk. Reserve (nicht sofort abziehbar) (€)',
+    'WEG-Rücklagenzuführung / Reserveanteil (nicht sofort abziehbar) (€)',
+    'Erwartete WEG-Rücklagenverwendung (kein zweiter Cash-out) (€)',
+    'Nachgelagerte Rücklagen-Werbungskosten (€)',
+    'Rücklage kumuliert (nach modellierter Verwendung) (€)',
     'Zins (€)',
     'Tilgung (€)',
     'Sondertilgung (€)',
@@ -609,8 +660,14 @@ export function exportToCSV(years: ProjectionYear[]): string {
       formatCsvNum(y.instandhaltung),
       formatCsvNum(y.verwaltung),
       formatCsvNum(y.sonstigeKosten),
+      formatCsvNum(y.umlagefaehigeKosten),
+      formatCsvNum(y.leerstandsbedingteUmlagekosten),
+      formatCsvNum(y.nichtUmlagefaehigeKosten),
       formatCsvNum(y.bewirtschaftungskosten),
       formatCsvNum(y.ruecklagenZufuehrung),
+      formatCsvNum(y.ruecklagenEntnahme),
+      formatCsvNum(y.ruecklagenWerbungskosten),
+      formatCsvNum(y.kumulierteRuecklage),
       formatCsvNum(y.zins),
       formatCsvNum(y.tilgung),
       formatCsvNum(y.sondertilgung),

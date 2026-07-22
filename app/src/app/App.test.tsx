@@ -11,6 +11,10 @@ import { App } from './App';
 const initialAuthState = useAuthStore.getState();
 const initialScenarioState = useScenarioStore.getState();
 
+function expectNormalizedText(element: Element | null, expected: string): void {
+  expect(element?.textContent?.replace(/\s/g, ' ')).toContain(expected.replace(/\s/g, ' '));
+}
+
 describe('Dashboard-Jahresauswahl', () => {
   beforeEach(() => {
     const active = createDefaultScenario();
@@ -97,7 +101,97 @@ describe('Dashboard-Jahresauswahl', () => {
     expect(hint).not.toBeNull();
     expect(hint).toHaveTextContent('Erhaltungsrücklage der WEG');
     expect(hint).toHaveTextContent('kalkulatorische Reserve für das Sondereigentum');
-    expect(hint).toHaveTextContent('Beides mindert den Cashflow, aber nicht das V&V-Ergebnis');
+    expect(hint).toHaveTextContent('Beides bindet Liquidität, aber mindert noch nicht das V&V-Ergebnis');
+    expect(hint).toHaveTextContent('separate Preiswirkungsquote');
+    expect(screen.getByText('Cash-Abfluss Jahr 1 insgesamt')).toBeInTheDocument();
+    expect(screen.getByText('davon nicht sofort abziehbar')).toBeInTheDocument();
+    expect(screen.getByText('davon im Jahr sofort abziehbar')).toBeInTheDocument();
+    expect(screen.getByText(/Die Prozentquote teilt den oben eingegebenen Gesamtbetrag nur auf/)).toBeInTheDocument();
+    expect(screen.getByText('Reserve: Preiswirkung beim Exit (%)')).toBeInTheDocument();
+    const exitHint = screen.getByText('Preiswirkung konservativ wählen:', { selector: 'strong' }).closest('p');
+    expect(exitHint).toHaveTextContent('WEG-Zuführung und private Reserve nicht trennt');
+    expect(exitHint).toHaveTextContent('grundsätzlich 0 %');
+    expect(exitHint).toHaveTextContent('private Reserve bleibt Vermögen des Verkäufers');
+    expect(screen.getByText('Rücklagen-Preiswirkung')).toBeInTheDocument();
+  });
+
+  it('uebernimmt Wirtschaftsplan-Summen direkt und nutzt die vorhandene Leerstandsquote', () => {
+    useScenarioStore.getState().updateActive((draft) => {
+      draft.miete.leerstandPct = 3;
+      draft.kosten.kostenErfassungMode = 'detailliert';
+      draft.kosten.maintenanceMode = 'absolute';
+      draft.kosten.instandhaltungAbsolut = 777;
+      draft.kosten.umlagefaehigeKostenProJahr = 1194.99;
+      draft.kosten.nichtUmlagefaehigeKostenProJahr = 554.06;
+      draft.kosten.wegRuecklageProJahr = 456;
+    });
+    render(<App />);
+
+    fireEvent.click(screen.getByText('Laufende Kosten').closest('button') as HTMLButtonElement);
+    fireEvent.click(screen.getByRole('button', { name: 'Direkt aus Wirtschaftsplan' }));
+
+    expect(screen.getByLabelText('Summe umlagefähige Kosten')).toHaveValue(formatEUR(1194.99, 2));
+    expect(screen.getByLabelText('Summe nicht umlagefähige Kosten')).toHaveValue(formatEUR(554.06, 2));
+    expect(screen.getByLabelText('Summe Zuführung Erhaltungsrücklage')).toHaveValue(formatEUR(456, 2));
+    expectNormalizedText(screen.getByText('Summe geplante Kosten').closest('div'), formatEUR(1749.05, 2));
+    expectNormalizedText(
+      screen.getByText('Summe geplante Vorschüsse / Hausgeld p. a.').closest('div'),
+      formatEUR(2205.05, 2),
+    );
+    expectNormalizedText(
+      screen.getByText(/Nicht umlegbar wegen .* Leerstand/).closest('div'),
+      formatEUR(35.8497, 2),
+    );
+    expectNormalizedText(screen.getByText('Eigentümer-Cashout p. a.').closest('div'), formatEUR(1045.9097, 2));
+    expectNormalizedText(
+      screen.getByText('davon sofort steuerlich berücksichtigt (Modell)').closest('div'),
+      formatEUR(589.9097, 2),
+    );
+    expectNormalizedText(
+      screen.getByText('davon nicht sofort berücksichtigt').closest('div'),
+      formatEUR(456, 2),
+    );
+    expect(screen.getByText('Verwendung je Jahreszuführung (%)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Durchschnittliche Verzögerung')).toHaveValue('5 Jahre');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detaillierte Schätzung' }));
+    expect(screen.getByLabelText('Instandhaltung pro Jahr')).toHaveValue(formatEUR(777));
+    expect(useScenarioStore.getState().active.kosten.umlagefaehigeKostenProJahr).toBe(1194.99);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Direkt aus Wirtschaftsplan' }));
+    expect(screen.getByLabelText('Summe umlagefähige Kosten')).toHaveValue(formatEUR(1194.99, 2));
+  });
+
+  it('nutzt bei unvollständigen Bodenwertdaten 30 Prozent und bewahrt alle Rohwerte', () => {
+    useScenarioStore.getState().updateActive((draft) => {
+      draft.objekt.kaufpreis = 60000;
+      draft.objekt.bodenwertMode = 'perSqm';
+      draft.objekt.bodenwertAnteilPct = 17;
+      draft.objekt.bodenrichtwertProSqm = 620;
+      draft.objekt.grundstuecksflaeche = 0;
+      draft.objekt.miteigentumsanteilZaehler = 57;
+      draft.objekt.miteigentumsanteilNenner = 1000;
+    });
+    render(<App />);
+
+    expect(screen.getByText(/konservativ mit/).closest('p')).toHaveTextContent('30 % Bodenanteil');
+    expectNormalizedText(screen.getByText(/Bodenwert:/).closest('div'), formatEUR(18000));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Boden %' }));
+    expect(screen.getByLabelText('Bodenwertanteil (%)')).toHaveValue('17');
+    fireEvent.click(screen.getByRole('button', { name: 'EUR/m²' }));
+
+    expect(screen.getByLabelText('Bodenrichtwert (€/m²)')).toHaveValue('620 EUR/m²');
+    expect(screen.getByLabelText('Grundstück gesamt (m²)')).toHaveValue('0');
+    expect(screen.getByLabelText('MEA – Ihr Anteil')).toHaveValue('57');
+    expect(screen.getByLabelText('MEA – Objekt gesamt')).toHaveValue('1000');
+
+    const meaNumerator = screen.getByLabelText('MEA – Ihr Anteil');
+    fireEvent.focus(meaNumerator);
+    fireEvent.change(meaNumerator, { target: { value: '1001' } });
+    fireEvent.blur(meaNumerator);
+    expect(useScenarioStore.getState().active.objekt.miteigentumsanteilZaehler).toBe(1001);
+    expect(useScenarioStore.getState().active.objekt.miteigentumsanteilNenner).toBe(1000);
   });
 
   it('zeigt markierte Modernisierungen als Prüfhinweis im Mietbereich', () => {
@@ -265,6 +359,7 @@ describe('Szenario speichern über Abschnitts-Buttons', () => {
     const store = useScenarioStore.getState();
     store.updateActive((d) => { d.objekt.kaufpreis = 123456; });
     store.updateActive((d) => { d.kosten.ruecklagenAnteilPct = 37; });
+    store.updateActive((d) => { d.kosten.ruecklagenRestwertPct = 25; });
     store.updateActive((d) => { d.exit.haltedauerJahre = 22; });
 
     render(<App />);
@@ -279,6 +374,7 @@ describe('Szenario speichern über Abschnitts-Buttons', () => {
     // Auch Werte aus nicht geöffneten Abschnitten sind gespeichert:
     expect(saved[0].objekt.kaufpreis).toBe(123456);
     expect(saved[0].kosten.ruecklagenAnteilPct).toBe(37);
+    expect(saved[0].kosten.ruecklagenRestwertPct).toBe(25);
     expect(saved[0].exit.haltedauerJahre).toBe(22);
   });
 

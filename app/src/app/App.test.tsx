@@ -156,6 +156,8 @@ describe('Dashboard-Jahresauswahl', () => {
     );
     expect(screen.getByText('Verwendung je Jahreszuführung (%)')).toBeInTheDocument();
     expect(screen.getByLabelText('Durchschnittliche Verzögerung')).toHaveValue('5 Jahre');
+    // Ohne SEV bleibt die Zeile ausgeblendet.
+    expect(screen.queryByText(/Sondereigentumsverwaltung \(außerhalb/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Detaillierte Schätzung' }));
     expect(screen.getByText('Berechnungsart Instandhaltung')).toBeInTheDocument();
@@ -176,6 +178,43 @@ describe('Dashboard-Jahresauswahl', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Direkt aus Wirtschaftsplan' }));
     expect(screen.getByLabelText('Summe umlagefähige Kosten')).toHaveValue(formatEUR(1194.99, 2));
+  });
+
+  it('zeigt die SEV in der Wirtschaftsplan-Zusammenfassung wie in der Engine', () => {
+    useScenarioStore.getState().updateActive((draft) => {
+      draft.miete.leerstandPct = 3;
+      draft.kosten.kostenErfassungMode = 'wirtschaftsplan';
+      draft.kosten.umlagefaehigeKostenProJahr = 1194.99;
+      draft.kosten.nichtUmlagefaehigeKostenProJahr = 554.06;
+      draft.kosten.wegRuecklageProJahr = 456;
+      draft.kosten.sevProJahr = 300;
+    });
+    render(<App />);
+
+    fireEvent.click(screen.getByText('Laufende Kosten').closest('button') as HTMLButtonElement);
+
+    // Die Zusammenfassung muss exakt den Werten der Engine entsprechen.
+    const engineYear1 = runProjection(useScenarioStore.getState().active, 1).years[0];
+    expect(engineYear1.bewirtschaftungskosten).toBeCloseTo(1345.9097, 4);
+
+    expectNormalizedText(
+      screen.getByText(/Sondereigentumsverwaltung \(außerhalb/).closest('div'),
+      formatEUR(300, 2),
+    );
+    expectNormalizedText(
+      screen.getByText('Eigentümer-Cashout p. a.').closest('div'),
+      formatEUR(engineYear1.bewirtschaftungskosten, 2),
+    );
+    expectNormalizedText(
+      screen.getByText('davon sofort steuerlich berücksichtigt (Modell)').closest('div'),
+      formatEUR(889.9097, 2),
+    );
+    // Der Wirtschaftsplan selbst enthaelt die SEV nicht.
+    expectNormalizedText(screen.getByText('Summe geplante Kosten').closest('div'), formatEUR(1749.05, 2));
+    expectNormalizedText(
+      screen.getByText('Summe geplante Vorschüsse / Hausgeld p. a.').closest('div'),
+      formatEUR(2205.05, 2),
+    );
   });
 
   it('nutzt bei unvollständigen Bodenwertdaten 30 Prozent und bewahrt alle Rohwerte', () => {

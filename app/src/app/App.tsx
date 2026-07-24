@@ -443,7 +443,10 @@ export function App() {
   const wpGeplanteVorschuesse = wpGeplanteKosten + wpWegRuecklage;
   const wpLeerstandsanteil = wpUmlagefaehig
     * (Math.min(100, Math.max(0, active.miete.leerstandPct)) / 100);
-  const wpSofortAbziehbar = wpNichtUmlagefaehig + wpLeerstandsanteil;
+  // SEV steht ausserhalb des Wirtschaftsplans, ist aber wie in der Engine
+  // (projectCosts) sofort abziehbarer Eigentuemer-Cashout.
+  const wpSev = Math.max(0, active.kosten.sevProJahr ?? 0);
+  const wpSofortAbziehbar = wpNichtUmlagefaehig + wpLeerstandsanteil + wpSev;
   const wpEigentuemerCashout = wpSofortAbziehbar + wpWegRuecklage;
   const visibleDashboardYear = Math.min(Math.max(dashboardYear, 1), proj.years.length);
   const selectedProjectionYear = proj.years[visibleDashboardYear - 1];
@@ -2961,6 +2964,12 @@ export function App() {
                           <span>Nicht umlegbar wegen {formatPercent(active.miete.leerstandPct)} Leerstand</span>
                           <strong>{formatEUR(wpLeerstandsanteil, 2)}</strong>
                         </div>
+                        {wpSev > 0 && (
+                          <div className="flex justify-between gap-4">
+                            <span>Sondereigentumsverwaltung (außerhalb des Wirtschaftsplans)</span>
+                            <strong>{formatEUR(wpSev, 2)}</strong>
+                          </div>
+                        )}
                         <div className="flex justify-between gap-4">
                           <span>Eigentümer-Cashout p. a.</span>
                           <strong>{formatEUR(wpEigentuemerCashout, 2)}</strong>
@@ -4750,7 +4759,7 @@ export function App() {
                               <th className="py-2 px-3 font-semibold text-right">
                                 <span className="inline-flex items-center gap-1 justify-end">
                                   Vorfälligkeit
-                                  <InfoTooltip content="Vorfälligkeitsentschädigung auf die Restschuld bei Verkauf vor Ende der Zinsbindung (Jahr 0 = kein Betrag angesetzt). Ist bereits im Netto-Erlös abgezogen." />
+                                  <InfoTooltip content="Vorfälligkeitsentschädigung auf die Restschuld bei Verkauf vor Ende der Zinsbindung (0 % = kein Betrag angesetzt). Ist bereits im Netto-Erlös abgezogen." />
                                 </span>
                               </th>
                               <th className="py-2 px-3 font-semibold text-right">Netto-Erlös</th>

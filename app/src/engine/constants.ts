@@ -2,6 +2,9 @@
 // Aktualisierungen trivial sind (keine harten Werte in der Berechnungslogik).
 import type { Bundesland } from './types';
 
+/** Groesster in Eingabe, Import und Haltedauervergleich unterstuetzter Zeitraum. */
+export const MAX_HOLDING_PERIOD_YEARS = 40;
+
 /** Grunderwerbsteuer in % je Bundesland (Stand 2026, in der UI editierbar). */
 export const GREST_BY_BUNDESLAND: Record<Bundesland, number> = {
   BW: 5.0,

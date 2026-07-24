@@ -31,6 +31,7 @@ export interface CostYearProjection {
   umlagefaehigeKosten: number;
   leerstandsbedingteUmlagekosten: number;
   nichtUmlagefaehigeKosten: number;
+  sev: number;             // Sondereigentumsverwaltung, nicht umlagefaehig, sofort abziehbar (beide Modi)
   wegRuecklage: number;
   sofortAbziehbareKosten: number;
   summeKosten: number;     // gesamter Eigentuemer-Cashout inkl. Ruecklage und Leerstandsanteil
@@ -195,7 +196,7 @@ export function projectCosts(
   if (years <= 0) return result;
 
   const costGrowthRate = kostenInput.kostensteigerungPctPa;
-  const wirtschaftsplanMode = (kostenInput.kostenErfassungMode ?? 'detailliert') === 'wirtschaftsplan';
+  const wirtschaftsplanMode = kostenInput.kostenErfassungMode === 'wirtschaftsplan';
 
   let currentUmlagefaehig = Math.max(0, kostenInput.umlagefaehigeKostenProJahr ?? 0);
   let currentNichtUmlagefaehig = Math.max(0, kostenInput.nichtUmlagefaehigeKostenProJahr ?? 0);
@@ -213,9 +214,13 @@ export function projectCosts(
 
   let currentVerwaltung = kostenInput.verwaltungProJahr;
   let currentSonstige = kostenInput.sonstigeKostenProJahr;
+  // Sondereigentumsverwaltung: in beiden Erfassungsmodi ein separater, sofort abziehbarer
+  // Eigentuemer-Cashout, der mit der allgemeinen Kostensteigerung waechst.
+  let currentSev = Math.max(0, kostenInput.sevProJahr ?? 0);
 
   for (let t = 1; t <= years; t++) {
     if (t > 1) {
+      currentSev *= 1 + costGrowthRate / 100;
       if (wirtschaftsplanMode) {
         currentUmlagefaehig *= 1 + costGrowthRate / 100;
         currentNichtUmlagefaehig *= 1 + costGrowthRate / 100;
@@ -250,7 +255,8 @@ export function projectCosts(
       ? currentNichtUmlagefaehig
       : detailedTotal - detailedReserve;
     const wegRuecklage = wirtschaftsplanMode ? currentWegRuecklage : detailedReserve;
-    const sofortAbziehbareKosten = nichtUmlagefaehigeKosten + leerstandsbedingteUmlagekosten;
+    const sev = currentSev;
+    const sofortAbziehbareKosten = nichtUmlagefaehigeKosten + leerstandsbedingteUmlagekosten + sev;
     const summeKosten = sofortAbziehbareKosten + wegRuecklage;
 
     result.push({
@@ -263,6 +269,7 @@ export function projectCosts(
       umlagefaehigeKosten,
       leerstandsbedingteUmlagekosten,
       nichtUmlagefaehigeKosten,
+      sev,
       wegRuecklage,
       sofortAbziehbareKosten,
       summeKosten,

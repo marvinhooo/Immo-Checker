@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectSeries } from './timeline';
+import { projectSeries, projectEndOfYearSeries } from './timeline';
 import { IncreaseRule } from './types';
 
 describe('timeline engine - projectSeries', () => {
@@ -102,5 +102,64 @@ describe('timeline engine - projectSeries', () => {
     expect(result[1]).toBeCloseTo(101, 4);
     expect(result[2]).toBeCloseTo(104.03, 4);
     expect(result[3]).toBeCloseTo(107.1509, 4);
+  });
+});
+
+describe('timeline engine - projectEndOfYearSeries', () => {
+  it('should return an empty array for 0 or negative years', () => {
+    expect(projectEndOfYearSeries(100, [], 0)).toEqual([]);
+    expect(projectEndOfYearSeries(100, [], -5)).toEqual([]);
+  });
+
+  it('should return exactly `years` entries and never contain the t0 base itself', () => {
+    const rules: IncreaseRule[] = [
+      { id: 'r1', kind: 'rate', fromYear: 1, percentPerYear: 10 },
+    ];
+    const result = projectEndOfYearSeries(100, rules, 5);
+    expect(result).toHaveLength(5);
+    expect(result[0]).toBeCloseTo(110, 4);
+  });
+
+  it('differs from the flow series: rate 10 % ab Jahr 1', () => {
+    const rules: IncreaseRule[] = [
+      { id: 'r1', kind: 'rate', fromYear: 1, percentPerYear: 10 },
+    ];
+    // Stromgroesse (Miete): Jahr 1 = 100, Jahr 2 = 110
+    const flow = projectSeries(100, rules, 2);
+    expect(flow[0]).toBeCloseTo(100, 4);
+    expect(flow[1]).toBeCloseTo(110, 4);
+
+    // Bestandsgroesse (Immobilienwert): Ende Jahr 1 = 110, Ende Jahr 2 = 121
+    const stock = projectEndOfYearSeries(100, rules, 2);
+    expect(stock[0]).toBeCloseTo(110, 4);
+    expect(stock[1]).toBeCloseTo(121, 4);
+  });
+
+  it('applies a rate that starts in year 3 only from year 3 on', () => {
+    const rules: IncreaseRule[] = [
+      { id: 'r1', kind: 'rate', fromYear: 3, percentPerYear: 10 },
+    ];
+    const result = projectEndOfYearSeries(100, rules, 3);
+    expect(result[0]).toBeCloseTo(100, 4);
+    expect(result[1]).toBeCloseTo(100, 4);
+    expect(result[2]).toBeCloseTo(110, 4);
+  });
+
+  it('applies a step in year 3 exactly in year 3', () => {
+    const rules: IncreaseRule[] = [
+      { id: 's1', kind: 'step', fromYear: 3, percent: 10 },
+    ];
+    const result = projectEndOfYearSeries(100, rules, 3);
+    expect(result[0]).toBeCloseTo(100, 4);
+    expect(result[1]).toBeCloseTo(100, 4);
+    expect(result[2]).toBeCloseTo(110, 4);
+  });
+
+  it('ignores wirksamAbMonat for stock values (no pro-rata year-end value)', () => {
+    const rules: IncreaseRule[] = [
+      { id: 's1', kind: 'step', fromYear: 2, percent: 10, wirksamAbMonat: 7 },
+    ];
+    const result = projectEndOfYearSeries(100, rules, 2);
+    expect(result[1]).toBeCloseTo(110, 4);
   });
 });

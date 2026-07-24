@@ -74,3 +74,49 @@ export function projectSeries(
 
   return result;
 }
+
+/**
+ * Bestandsgroessen-Variante von projectSeries fuer Werte, die zum JAHRESENDE gelten
+ * (z. B. Immobilienwert), nicht fuer Stroeme, die ueber das Jahr anfallen (z. B. Miete).
+ *
+ * - `base` ist der Stand in t0 (Kaufzeitpunkt), er selbst ist NICHT Teil des Ergebnisses.
+ * - Ergebnis[t - 1] ist der Wert am Ende von Jahr t, das Array hat exakt `years` Eintraege.
+ * - Fuer jedes Jahr t wird zuerst die aktive Jahresrate angewandt, danach die Stufen mit
+ *   fromYear === t. `wirksamAbMonat` ist hier bewusst ohne Wirkung: ein Bestand zum
+ *   Jahresende ist entweder gestiegen oder nicht, eine unterjaehrige Quotelung gibt es nicht.
+ */
+export function projectEndOfYearSeries(
+  base: number,
+  rules: IncreaseRule[],
+  years: number
+): number[] {
+  const result: number[] = [];
+  if (years <= 0) return result;
+
+  let value = base;
+
+  for (let t = 1; t <= years; t++) {
+    const activeRateRule = rules
+      .filter(r => r.kind === 'rate' && r.fromYear <= t)
+      .reduce<IncreaseRule | null>((maxRule, currentRule) => {
+        if (!maxRule) return currentRule;
+        return currentRule.fromYear > maxRule.fromYear ? currentRule : maxRule;
+      }, null);
+
+    const ratePct = activeRateRule && 'percentPerYear' in activeRateRule
+      ? activeRateRule.percentPerYear
+      : 0;
+
+    value = value * (1 + ratePct / 100);
+
+    for (const step of rules.filter(r => r.kind === 'step' && r.fromYear === t)) {
+      if ('percent' in step) {
+        value = value * (1 + step.percent / 100);
+      }
+    }
+
+    result.push(value);
+  }
+
+  return result;
+}

@@ -2,7 +2,7 @@
 // Reine Funktionen ohne Seiteneffekte - von Store UND Tests genutzt.
 import type { Scenario } from './types';
 
-export const CONSERVATIVE_BODENWERT_ANTEIL_PCT = 30;
+export const BODENWERT_FALLBACK_PCT = 30;
 
 export interface CashInvestmentBreakdown {
   enteredEquity: number;
@@ -22,8 +22,8 @@ export function knkAmount(s: Scenario): number {
 /**
  * Fuer den Bodenwert massgebliche Flaeche in m2: anteilige Grundstuecksflaeche
  * (Grundstueck x Miteigentumsanteil laut Teilungserklaerung). Unvollstaendige
- * Bodenrichtwertdaten liefern 0; fuer die Bewertung greift separat der konservative
- * Prozent-Fallback, damit Wohnflaeche nie als Grundstuecksflaeche missverstanden wird.
+ * Bodenrichtwertdaten liefern 0; fuer die Bewertung greift separat der vorlaeufige
+ * 30-%-Fallback, damit Wohnflaeche nie als Grundstuecksflaeche missverstanden wird.
  */
 export function bodenwertFlaeche(s: Scenario): number {
   const { grundstuecksflaeche, miteigentumsanteilZaehler, miteigentumsanteilNenner } = s.objekt;
@@ -47,7 +47,7 @@ export function hasCompleteBodenrichtwertInputs(s: Scenario): boolean {
 export function landValueAmount(s: Scenario): number {
   if (s.objekt.bodenwertMode === 'perSqm') {
     if (!hasCompleteBodenrichtwertInputs(s)) {
-      return (s.objekt.kaufpreis * CONSERVATIVE_BODENWERT_ANTEIL_PCT) / 100;
+      return (s.objekt.kaufpreis * BODENWERT_FALLBACK_PCT) / 100;
     }
     return Math.min(
       s.objekt.kaufpreis,

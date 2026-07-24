@@ -167,6 +167,149 @@ describe('Metrics Engine', () => {
     });
   });
 
+  describe('Rating-Aufspaltung (IRR / Liquiditaet / Gesamt)', () => {
+    const halte = (n: number) => ({
+      haltedauerJahre: n,
+      verkaufsnebenkostenMode: 'percent' as const,
+      verkaufsnebenkostenPct: 3,
+      verkaufsnebenkostenAbsolut: 2500,
+      vorfaelligkeitPct: 0,
+    });
+
+    it('rates IRR green but overall red when every year is cash-negative', () => {
+      // Hoher Leverage + starke Wertsteigerung: gute IRR, aber jedes Jahr negativer Cashflow.
+      const scenario = createDefaultScenario({
+        objekt: { kaufpreis: 300000, wohnflaeche: 70, fertigstellungsjahr: 2000, bundesland: 'NW', objektTyp: 'bestand', bodenwertAnteilPct: 20, sanierungskosten: 0 },
+        miete: { rentMode: 'perMonth', kaltmieteProMonat: 800, kaltmieteProJahr: 9600, kaltmieteProSqm: 800 / 70, leerstandPct: 3, mietspiegel: { untererSpannwertProSqm: 0, mittelwertProSqm: 0, obererSpannwertProSqm: 0 }, steigerungen: [{ id: 'r', kind: 'rate', fromYear: 1, percentPerYear: 2 }] },
+        wertentwicklung: { szenario: [{ id: 'r', kind: 'rate', fromYear: 1, percentPerYear: 6 }] },
+        finanzierung: { equityMode: 'percent', equityPct: 5, equityAbsolute: 0, sollzinsPct: 4, tilgungPct: 3, zinsbindungJahre: 10, anschlusszinsPct: 4, anschlussTilgungPct: null, sondertilgungProJahr: 0, disagioPct: 0 },
+        exit: halte(8),
+      });
+      const m = calculateMetrics(scenario, runProjection(scenario), 4.0);
+      expect(m.irr).toBeGreaterThanOrEqual(4.0);
+      expect(m.irrRating).toBe('green');
+      expect(m.liquidityRating).toBe('red');
+      expect(m.rating).toBe('red');
+    });
+
+    it('rates everything green when IRR beats the target and all cashflows are non-negative', () => {
+      const scenario = createDefaultScenario({
+        objekt: { kaufpreis: 200000, wohnflaeche: 70, fertigstellungsjahr: 2000, bundesland: 'NW', objektTyp: 'bestand', bodenwertAnteilPct: 20, sanierungskosten: 0 },
+        miete: { rentMode: 'perMonth', kaltmieteProMonat: 1400, kaltmieteProJahr: 16800, kaltmieteProSqm: 20, leerstandPct: 0, mietspiegel: { untererSpannwertProSqm: 0, mittelwertProSqm: 0, obererSpannwertProSqm: 0 }, steigerungen: [{ id: 'r', kind: 'rate', fromYear: 1, percentPerYear: 2 }] },
+        finanzierung: { equityMode: 'percent', equityPct: 60, equityAbsolute: 0, sollzinsPct: 3, tilgungPct: 2, zinsbindungJahre: 10, anschlusszinsPct: 3, anschlussTilgungPct: null, sondertilgungProJahr: 0, disagioPct: 0 },
+        exit: halte(10),
+      });
+      const m = calculateMetrics(scenario, runProjection(scenario), 4.0);
+      expect(m.irr).toBeGreaterThanOrEqual(4.0);
+      expect(m.irrRating).toBe('green');
+      expect(m.liquidityRating).toBe('green');
+      expect(m.rating).toBe('green');
+    });
+
+    it('rates overall yellow for a positive IRR below target with mixed cashflows', () => {
+      const scenario = createDefaultScenario({
+        objekt: { kaufpreis: 300000, wohnflaeche: 70, fertigstellungsjahr: 2000, bundesland: 'NW', objektTyp: 'bestand', bodenwertAnteilPct: 20, sanierungskosten: 0 },
+        miete: { rentMode: 'perMonth', kaltmieteProMonat: 980, kaltmieteProJahr: 11760, kaltmieteProSqm: 980 / 70, leerstandPct: 3, mietspiegel: { untererSpannwertProSqm: 0, mittelwertProSqm: 0, obererSpannwertProSqm: 0 }, steigerungen: [{ id: 'r', kind: 'rate', fromYear: 1, percentPerYear: 7 }] },
+        wertentwicklung: { szenario: [{ id: 'r', kind: 'rate', fromYear: 1, percentPerYear: 1.5 }] },
+        finanzierung: { equityMode: 'percent', equityPct: 40, equityAbsolute: 0, sollzinsPct: 4, tilgungPct: 2, zinsbindungJahre: 10, anschlusszinsPct: 4, anschlussTilgungPct: null, sondertilgungProJahr: 0, disagioPct: 0 },
+        exit: halte(8),
+      });
+      const proj = runProjection(scenario);
+      const m = calculateMetrics(scenario, proj, 4.0);
+      const cfs = proj.years.map((y) => y.cashflowNachSteuer);
+      expect(m.irr).toBeGreaterThan(0);
+      expect(m.irr).toBeLessThan(4.0);
+      expect(cfs.some((cf) => cf < 0)).toBe(true);
+      expect(cfs.some((cf) => cf >= 0)).toBe(true);
+      expect(m.irrRating).toBe('yellow');
+      expect(m.liquidityRating).toBe('yellow');
+      expect(m.rating).toBe('yellow');
+    });
+
+    it('rates everything red for a negative IRR', () => {
+      const scenario = createDefaultScenario({
+        objekt: { kaufpreis: 500000, wohnflaeche: 70, fertigstellungsjahr: 2000, bundesland: 'NW', objektTyp: 'bestand', bodenwertAnteilPct: 20, sanierungskosten: 0 },
+        miete: { rentMode: 'perMonth', kaltmieteProMonat: 700, kaltmieteProJahr: 8400, kaltmieteProSqm: 10, leerstandPct: 5, mietspiegel: { untererSpannwertProSqm: 0, mittelwertProSqm: 0, obererSpannwertProSqm: 0 }, steigerungen: [] },
+        wertentwicklung: { szenario: [{ id: 'r', kind: 'rate', fromYear: 1, percentPerYear: -2 }] },
+        finanzierung: { equityMode: 'percent', equityPct: 20, equityAbsolute: 0, sollzinsPct: 5, tilgungPct: 2, zinsbindungJahre: 10, anschlusszinsPct: 5, anschlussTilgungPct: null, sondertilgungProJahr: 0, disagioPct: 0 },
+        exit: halte(5),
+      });
+      const m = calculateMetrics(scenario, runProjection(scenario), 4.0);
+      expect(m.irr).toBeLessThan(0);
+      expect(m.irrRating).toBe('red');
+      expect(m.rating).toBe('red');
+    });
+  });
+
+  describe('Break-even-Zins Semantik (null-Faelle)', () => {
+    it('returns null when a financed scenario is already cash-negative at 0 % interest', () => {
+      // Hohe Tilgung: der Cashflow nach Steuern ist selbst bei 0 % Sollzins negativ.
+      const scenario = createDefaultScenario({
+        finanzierung: { equityMode: 'percent', equityPct: 5, equityAbsolute: 0, sollzinsPct: 4, tilgungPct: 8, zinsbindungJahre: 10, anschlusszinsPct: 4, anschlussTilgungPct: null, sondertilgungProJahr: 0, disagioPct: 0 },
+        exit: { haltedauerJahre: 5, verkaufsnebenkostenMode: 'percent', verkaufsnebenkostenPct: 3, verkaufsnebenkostenAbsolut: 2500, vorfaelligkeitPct: 0 },
+      });
+      // Sicherstellen, dass Jahr-1-Cashflow bei 0 % wirklich negativ ist.
+      const at0 = runProjection({ ...scenario, finanzierung: { ...scenario.finanzierung, sollzinsPct: 0 } }, 1);
+      expect(at0.years[0].cashflowNachSteuer).toBeLessThan(0);
+      expect(findBreakEvenInterestRate(scenario)).toBeNull();
+    });
+
+    it('does not regress to NaN or Infinity for the default scenario', () => {
+      const scenario = createDefaultScenario();
+      const be = findBreakEvenInterestRate(scenario);
+      expect(be).not.toBeNull();
+      expect(Number.isFinite(be as number)).toBe(true);
+      expect(be as number).toBeGreaterThan(0);
+      expect(be as number).toBeLessThanOrEqual(100);
+    });
+  });
+
+  describe('Break-even-Basismiete vs. Jahr-1-Miete nach Mietregeln', () => {
+    it('reports the actual year-1 rent after a 15 % first-year step while keeping the base value', () => {
+      const scenario = createDefaultScenario({
+        objekt: { kaufpreis: 120000, wohnflaeche: 68, fertigstellungsjahr: 1990, bundesland: 'TH', objektTyp: 'bestand', bodenwertAnteilPct: 20, sanierungskosten: 0 },
+        miete: {
+          rentMode: 'perYear',
+          kaltmieteProMonat: 0,
+          kaltmieteProJahr: 6000,
+          kaltmieteProSqm: 0,
+          leerstandPct: 0,
+          mietspiegel: { untererSpannwertProSqm: 0, mittelwertProSqm: 0, obererSpannwertProSqm: 0 },
+          steigerungen: [{ id: 's1', kind: 'step', fromYear: 1, percent: 15 }],
+        },
+      });
+
+      const m = calculateMetrics(scenario, runProjection(scenario), 4.0);
+
+      // Die Einheit des Basiswerts wird korrekt mitgefuehrt.
+      expect(m.breakEvenRentMode).toBe('perYear');
+      // Der Basiswert selbst ist die Miete VOR den Mietregeln; die tatsaechliche
+      // Jahr-1-Bruttomiete ist wegen der 15-%-Stufe genau um Faktor 1,15 hoeher.
+      expect(m.breakEvenRentJahr1Brutto).toBeCloseTo(m.breakEvenRent * 1.15, 2);
+      expect(m.breakEvenRentJahr1Brutto).toBeGreaterThan(m.breakEvenRent);
+      // EUR/Monat und EUR/m2/Monat leiten sich aus der TATSAECHLICHEN Jahr-1-Miete ab.
+      expect(m.breakEvenRentJahr1ProMonat).toBeCloseTo(m.breakEvenRentJahr1Brutto / 12, 4);
+      expect(m.breakEvenRentJahr1ProSqm).not.toBeNull();
+      expect(m.breakEvenRentJahr1ProSqm as number).toBeCloseTo(m.breakEvenRentJahr1Brutto / 12 / 68, 4);
+    });
+
+    it('exposes concrete example numbers (base 5.440 €/a + 15 % → 6.256 €/a year 1)', () => {
+      // Rein rechnerische Kontrolle der Kontextualisierung, unabhaengig vom Solver.
+      const base = 5440;
+      const jahr1 = base * 1.15;
+      expect(jahr1).toBeCloseTo(6256, 6);
+    });
+
+    it('returns null EUR/m2 when no living area is set', () => {
+      const scenario = createDefaultScenario({
+        objekt: { kaufpreis: 120000, wohnflaeche: 0, fertigstellungsjahr: 1990, bundesland: 'TH', objektTyp: 'bestand', bodenwertAnteilPct: 20, sanierungskosten: 0 },
+        miete: { rentMode: 'perYear', kaltmieteProMonat: 0, kaltmieteProJahr: 6000, kaltmieteProSqm: 0, leerstandPct: 0, mietspiegel: { untererSpannwertProSqm: 0, mittelwertProSqm: 0, obererSpannwertProSqm: 0 }, steigerungen: [] },
+      });
+      const m = calculateMetrics(scenario, runProjection(scenario), 4.0);
+      expect(m.breakEvenRentJahr1ProSqm).toBeNull();
+    });
+  });
+
   describe('Break-even solvers', () => {
     it('verifies that the break-even rent yields a year-1 cashflow near 0', () => {
       const scenario = createDefaultScenario();
@@ -310,12 +453,13 @@ describe('Metrics Engine', () => {
     it('verifies that the break-even interest rate yields a year-1 cashflow near 0', () => {
       const scenario = createDefaultScenario();
       const breakEvenRate = findBreakEvenInterestRate(scenario);
+      expect(breakEvenRate).not.toBeNull();
 
       const testScenario = {
         ...scenario,
         finanzierung: {
           ...scenario.finanzierung,
-          sollzinsPct: breakEvenRate,
+          sollzinsPct: breakEvenRate as number,
         },
       };
 
@@ -323,7 +467,7 @@ describe('Metrics Engine', () => {
       expect(proj.years[0].cashflowNachSteuer).toBeCloseTo(0, 1);
     });
 
-    it('returns 0 for break-even interest when no loan exists', () => {
+    it('returns null for break-even interest when no loan exists', () => {
       const scenario = createDefaultScenario({
         finanzierung: {
           equityMode: 'percent',
@@ -338,7 +482,7 @@ describe('Metrics Engine', () => {
         },
       });
 
-      expect(findBreakEvenInterestRate(scenario)).toBe(0);
+      expect(findBreakEvenInterestRate(scenario)).toBeNull();
     });
 
     it('returns 0 interest when 0% is already break-even', () => {

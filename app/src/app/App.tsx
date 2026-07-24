@@ -1,4 +1,12 @@
-import { Fragment, useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import {
+  Fragment,
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  useCallback,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { useScenarioStore, useSyncedSave, useSyncedDelete } from '../store/scenarioStore';
 import { useAuthStore } from '../store/authStore';
 import { AdminPanel } from '../components/admin/AdminPanel';
@@ -15,7 +23,7 @@ import {
   effectiveBodenwertAnteilPct,
   bodenwertFlaeche,
   hasCompleteBodenrichtwertInputs,
-  CONSERVATIVE_BODENWERT_ANTEIL_PCT,
+  BODENWERT_FALLBACK_PCT,
   landValueAmount,
   loanAmount,
   annualBaseRent,
@@ -78,7 +86,12 @@ import { AgentReviewPanel } from '../components/agent/AgentReviewPanel';
 import { AgentConnectionsDialog } from '../components/auth/AgentConnectionsDialog';
 
 // Constants and Helpers
-import { BUNDESLAND_LABELS, GREST_BY_BUNDESLAND, linearAfaRateForYear } from '../engine/constants';
+import {
+  BUNDESLAND_LABELS,
+  GREST_BY_BUNDESLAND,
+  linearAfaRateForYear,
+  MAX_HOLDING_PERIOD_YEARS,
+} from '../engine/constants';
 import type {
   Scenario,
   BodenwertMode,
@@ -97,7 +110,7 @@ import type {
   SanierungSteuerart,
 } from '../engine/types';
 import { marginalRate } from '../engine/tax';
-import { projectSeries } from '../engine/timeline';
+import { projectSeries, projectEndOfYearSeries } from '../engine/timeline';
 import { createDefaultScenario } from '../engine/defaults';
 
 // Recharts components for visualisations
@@ -332,6 +345,7 @@ export function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showAgentDraftDialog, setShowAgentDraftDialog] = useState(false);
   const [showAgentConnections, setShowAgentConnections] = useState(false);
+  const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const [pendingAgentScenario, setPendingAgentScenario] = useState<Scenario | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<{
     title: string;
@@ -346,10 +360,34 @@ export function App() {
   const [remoteAgentDrafts, setRemoteAgentDrafts] = useState<RemoteAgentDraft[]>([]);
   const [isLoadingAgentDrafts, setIsLoadingAgentDrafts] = useState(false);
   const [agentDraftInboxError, setAgentDraftInboxError] = useState<string | null>(null);
+  const agentMenuRef = useRef<HTMLDivElement>(null);
+  const agentMenuTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (user?.id) loadFromCloud(user.id);
   }, [user?.id, loadFromCloud]);
+
+  useEffect(() => {
+    if (!agentMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (event.target instanceof Node && !agentMenuRef.current?.contains(event.target)) {
+        setAgentMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setAgentMenuOpen(false);
+      agentMenuTriggerRef.current?.focus();
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [agentMenuOpen]);
 
   // UI state
   const [openSection, setOpenSection] = useState<string>('objekt');
@@ -397,7 +435,7 @@ export function App() {
 
   // Compute live calculations
   const proj = useMemo(() => runProjection(active), [active]);
-  const kostenErfassungMode = active.kosten.kostenErfassungMode ?? 'detailliert';
+  const kostenErfassungMode = active.kosten.kostenErfassungMode;
   const wpUmlagefaehig = Math.max(0, active.kosten.umlagefaehigeKostenProJahr ?? 0);
   const wpNichtUmlagefaehig = Math.max(0, active.kosten.nichtUmlagefaehigeKostenProJahr ?? 0);
   const wpWegRuecklage = Math.max(0, active.kosten.wegRuecklageProJahr ?? 0);
@@ -446,7 +484,17 @@ export function App() {
   const effectiveBodenwert = useMemo(() => landValueAmount(active), [active]);
   const hasValidPlotShare = bodenwertFlaeche(active) > 0;
   const hasCompleteBodenrichtwert = hasCompleteBodenrichtwertInputs(active);
-  const usesConservativeBodenFallback = active.objekt.bodenwertMode === 'perSqm' && !hasCompleteBodenrichtwert;
+  const usesBodenwertFallback = active.objekt.bodenwertMode === 'perSqm' && !hasCompleteBodenrichtwert;
+  const fallbackImpliedPlotArea = usesBodenwertFallback
+    && active.objekt.kaufpreis > 0
+    && active.objekt.bodenrichtwertProSqm > 0
+    && active.objekt.miteigentumsanteilZaehler > 0
+    && active.objekt.miteigentumsanteilNenner > 0
+    && active.objekt.miteigentumsanteilZaehler <= active.objekt.miteigentumsanteilNenner
+    ? ((active.objekt.kaufpreis * BODENWERT_FALLBACK_PCT) / 100)
+      / (active.objekt.bodenrichtwertProSqm
+        * (active.objekt.miteigentumsanteilZaehler / active.objekt.miteigentumsanteilNenner))
+    : null;
   const currentSollzins = sensSollzins !== null ? sensSollzins : active.finanzierung.sollzinsPct;
   const currentLeerstand = sensLeerstand !== null ? sensLeerstand : active.miete.leerstandPct;
   const baseWertRule = active.wertentwicklung.szenario.find(r => r.kind === 'rate');
@@ -807,8 +855,10 @@ export function App() {
   const valueBase = active.objekt.kaufpreis;
   
   const valueChartData = useMemo(() => {
-    const valueSeries = projectSeries(valueBase, active.wertentwicklung.szenario, active.exit.haltedauerJahre + 1);
-    return valueSeries.slice(1).map((val, idx) => ({
+    // Immobilienwert ist eine Bestandsgröße zum Jahresende und muss exakt der Projektion
+    // entsprechen (projectEndOfYearSeries), nicht der stromindizierten Mietreihe.
+    const valueSeries = projectEndOfYearSeries(valueBase, active.wertentwicklung.szenario, active.exit.haltedauerJahre);
+    return valueSeries.map((val, idx) => ({
       Jahr: idx + 1,
       Wert: Math.round(val),
     }));
@@ -1347,6 +1397,52 @@ export function App() {
     window.print();
   };
 
+  const getAgentMenuItems = () => Array.from(
+    agentMenuRef.current?.querySelectorAll<HTMLElement>(
+      '[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])',
+    ) ?? [],
+  );
+
+  const focusAgentMenuBoundary = (last = false) => {
+    requestAnimationFrame(() => {
+      const items = getAgentMenuItems();
+      items[last ? items.length - 1 : 0]?.focus();
+    });
+  };
+
+  const handleAgentMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Tab') {
+      setAgentMenuOpen(false);
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      setAgentMenuOpen(false);
+      agentMenuTriggerRef.current?.focus();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+
+    event.preventDefault();
+    const items = getAgentMenuItems();
+    if (items.length === 0) return;
+    if (event.key === 'Home') {
+      items[0].focus();
+      return;
+    }
+    if (event.key === 'End') {
+      items[items.length - 1].focus();
+      return;
+    }
+    const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+    const direction = event.key === 'ArrowDown' ? 1 : -1;
+    const nextIndex = currentIndex < 0
+      ? (direction === 1 ? 0 : items.length - 1)
+      : (currentIndex + direction + items.length) % items.length;
+    items[nextIndex].focus();
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 antialiased">
       {/* Header */}
@@ -1527,52 +1623,123 @@ export function App() {
               <Upload size={13} className="text-slate-400" />
               Import
             </button>
-            <button
-              onClick={() => setShowAgentDraftDialog(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-700 transition cursor-pointer"
-              title="Strukturierten Agent-Entwurf prüfen und zunächst nur bereitstellen"
-            >
-              <Upload size={13} className="text-blue-500" />
-              Agent-Entwurf
-            </button>
-            <button
-              type="button"
-              onClick={() => void refreshRemoteAgentDrafts()}
-              disabled={isLoadingAgentDrafts}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 text-xs font-bold text-violet-800 transition cursor-pointer disabled:cursor-wait disabled:opacity-60"
-              title="Eigene, über MCP erstellte Agent-Drafts dieses Kontos abrufen"
-            >
-              <Download size={13} className="text-violet-500" />
-              {isLoadingAgentDrafts ? 'MCP-Inbox lädt…' : `MCP-Inbox${remoteAgentDrafts.length > 0 ? ` (${remoteAgentDrafts.length})` : ''}`}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAgentConnections(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white hover:bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-800 transition cursor-pointer"
-              title="OAuth- und Immo-MCP-Verbindungen dieses Kontos verwalten"
-            >
-              Agent-Verbindungen
-            </button>
-            <button
-              onClick={handleExportAgentSnapshot}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
-              title="Eingaben und berechnete Auswertung als Agent-Snapshot exportieren"
-            >
-              <Download size={13} className="text-slate-400" />
-              Agent-Snapshot
-            </button>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={browserAgentApiEnabled}
-              aria-label="Browser-Agent-Verbindung"
-              onClick={() => setBrowserAgentApiEnabled((enabled) => !enabled)}
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-bold transition cursor-pointer ${browserAgentApiEnabled ? 'border-violet-300 bg-violet-50 text-violet-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-              title="Kontogebundene Browser-Agent-API nur für diesen angemeldeten Tab aktivieren"
-            >
-              <span aria-hidden="true" className={`h-2 w-2 rounded-full ${browserAgentApiEnabled ? 'bg-violet-500' : 'bg-slate-300'}`} />
-              Browser-Agent
-            </button>
+            <div ref={agentMenuRef} className="relative">
+              <button
+                ref={agentMenuTriggerRef}
+                type="button"
+                aria-label="Agent-Menü"
+                aria-haspopup="menu"
+                aria-expanded={agentMenuOpen}
+                aria-controls="agent-actions-menu"
+                onClick={() => setAgentMenuOpen((open) => !open)}
+                onKeyDown={(event) => {
+                  if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+                  event.preventDefault();
+                  setAgentMenuOpen(true);
+                  focusAgentMenuBoundary(event.key === 'ArrowUp');
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition cursor-pointer shadow-2xs ${
+                  agentMenuOpen
+                    ? 'border-violet-300 bg-violet-50 text-violet-800'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Agent
+                {remoteAgentDrafts.length > 0 && (
+                  <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] text-violet-800" aria-hidden="true">
+                    {remoteAgentDrafts.length}
+                  </span>
+                )}
+                <ChevronDown
+                  size={13}
+                  className={`transition-transform ${agentMenuOpen ? 'rotate-180' : ''}`}
+                  aria-hidden="true"
+                />
+              </button>
+              {agentMenuOpen && (
+                <div
+                  id="agent-actions-menu"
+                  role="menu"
+                  aria-label="Agent-Aktionen"
+                  onKeyDown={handleAgentMenuKeyDown}
+                  className="absolute left-0 top-full z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAgentMenuOpen(false);
+                      setShowAgentDraftDialog(true);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-700 transition hover:bg-blue-50 hover:text-blue-800 focus:bg-blue-50 focus:outline-none"
+                    title="Strukturierten Agent-Entwurf prüfen und zunächst nur bereitstellen"
+                  >
+                    <Upload size={14} className="text-blue-500" />
+                    Agent-Entwurf
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAgentMenuOpen(false);
+                      void refreshRemoteAgentDrafts();
+                    }}
+                    disabled={isLoadingAgentDrafts}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-700 transition hover:bg-violet-50 hover:text-violet-800 focus:bg-violet-50 focus:outline-none disabled:cursor-wait disabled:opacity-60"
+                    title="Eigene, über MCP erstellte Agent-Drafts dieses Kontos abrufen"
+                  >
+                    <Download size={14} className="text-violet-500" />
+                    {isLoadingAgentDrafts ? 'MCP-Inbox lädt…' : `MCP-Inbox${remoteAgentDrafts.length > 0 ? ` (${remoteAgentDrafts.length})` : ''}`}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAgentMenuOpen(false);
+                      setShowAgentConnections(true);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-700 transition hover:bg-violet-50 hover:text-violet-800 focus:bg-violet-50 focus:outline-none"
+                    title="OAuth- und Immo-MCP-Verbindungen dieses Kontos verwalten"
+                  >
+                    <span aria-hidden="true" className="h-2 w-2 rounded-full bg-violet-500" />
+                    Agent-Verbindungen
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAgentMenuOpen(false);
+                      handleExportAgentSnapshot();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-700 transition hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
+                    title="Eingaben und berechnete Auswertung als Agent-Snapshot exportieren"
+                  >
+                    <Download size={14} className="text-slate-400" />
+                    Agent-Snapshot
+                  </button>
+                  <div role="separator" className="my-1 border-t border-slate-100" />
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={browserAgentApiEnabled}
+                    aria-label="Browser-Agent-Verbindung"
+                    onClick={() => {
+                      setBrowserAgentApiEnabled((enabled) => !enabled);
+                      setAgentMenuOpen(false);
+                    }}
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-bold transition focus:outline-none ${
+                      browserAgentApiEnabled
+                        ? 'bg-violet-50 text-violet-800 hover:bg-violet-100 focus:bg-violet-100'
+                        : 'text-slate-700 hover:bg-slate-50 focus:bg-slate-50'
+                    }`}
+                    title="Kontogebundene Browser-Agent-API nur für diesen angemeldeten Tab aktivieren"
+                  >
+                    <span aria-hidden="true" className={`h-2 w-2 rounded-full ${browserAgentApiEnabled ? 'bg-violet-500' : 'bg-slate-300'}`} />
+                    Browser-Agent-Verbindung
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={handleExportJSON}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition cursor-pointer shadow-2xs"
@@ -1814,16 +1981,25 @@ export function App() {
                     </AgentFieldFrame>
                     <div className="flex flex-col justify-end space-y-2">
                       <AgentFieldFrame path="/objekt/bodenwertMode">
-                      <Tabs
-                        activeTab={active.objekt.bodenwertMode}
-                        onChange={(id) => updateActive((d) => {
-                          d.objekt.bodenwertMode = id as BodenwertMode;
-                        })}
-                        tabs={[
-                          { id: 'percent', label: 'Boden %' },
-                          { id: 'perSqm', label: 'EUR/m²' },
-                        ]}
-                      />
+                        <div className="space-y-1.5">
+                          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            Berechnungsart Bodenwert
+                          </span>
+                          <Tabs
+                            activeTab={active.objekt.bodenwertMode}
+                            onChange={(id) => updateActive((d) => {
+                              d.objekt.bodenwertMode = id as BodenwertMode;
+                            })}
+                            tabs={[
+                              { id: 'percent', label: 'Prozent vom Kaufpreis' },
+                              { id: 'perSqm', label: 'Bodenrichtwert (€/m²) × Fläche' },
+                            ]}
+                          />
+                          <p className="text-[10px] leading-relaxed text-slate-500">
+                            Nur die aktive Berechnungsart fließt in Bodenwert und AfA ein. Eingaben der anderen Methode
+                            bleiben gespeichert, werden aber nicht mitgerechnet.
+                          </p>
+                        </div>
                       </AgentFieldFrame>
                       {active.objekt.bodenwertMode === 'percent' ? (
                         <AgentFieldFrame path="/objekt/bodenwertAnteilPct">
@@ -1897,11 +2073,20 @@ export function App() {
                             Der MEA muss größer als 0 sein und darf „Objekt gesamt“ nicht überschreiten.
                           </p>
                         ) : null}
-                        {usesConservativeBodenFallback && (
+                        {usesBodenwertFallback && (
                           <p className="text-[10px] font-medium text-amber-600 leading-snug">
                             Solange Bodenrichtwert, Grundstücksfläche oder MEA unvollständig sind, rechnet die App
-                            konservativ mit <strong>{CONSERVATIVE_BODENWERT_ANTEIL_PCT} % Bodenanteil</strong>. Bereits
-                            erfasste Werte bleiben gespeichert und werden automatisch verwendet, sobald alle Angaben vollständig sind.
+                            vorläufig mit der <strong>{BODENWERT_FALLBACK_PCT}-%-Standardannahme</strong>. Sie ist nicht
+                            an jedem Standort automatisch konservativ. Bereits erfasste Werte bleiben gespeichert und
+                            werden automatisch verwendet, sobald alle Angaben vollständig sind.
+                          </p>
+                        )}
+                        {fallbackImpliedPlotArea !== null && (
+                          <p className="text-[10px] font-medium text-amber-700 leading-snug">
+                            Mit Kaufpreis, Bodenrichtwert und MEA entspricht diese 30-%-Annahme einem Gesamtgrundstück
+                            von ca. <strong>{formatNumber(fallbackImpliedPlotArea, 1)} m²</strong>. Ist das tatsächliche
+                            Grundstück größer, liegt der rechnerische Bodenanteil über 30 % und der Fallback ist nicht
+                            mehr konservativ.
                           </p>
                         )}
                         </>
@@ -1909,7 +2094,7 @@ export function App() {
                       <div className="rounded-lg bg-slate-50 px-3 py-2 text-[10px] font-medium text-slate-500">
                         Bodenwert: <strong className="text-slate-700">{formatEUR(effectiveBodenwert)}</strong>
                         {' '}= <strong className="text-slate-700">{formatPercent(effectiveBodenwertPct, 2)}</strong> vom Kaufpreis.
-                        {usesConservativeBodenFallback ? ' (konservativer Fallback)' : ''}
+                        {usesBodenwertFallback ? ' (vorläufiger Fallback)' : ''}
                       </div>
                       <p className="text-[10px] text-slate-400 mt-1 leading-snug">
                         Anteil des Grundstückswerts am Kaufpreis — nur das Gebäude ist abschreibbar (AfA).
@@ -2702,7 +2887,9 @@ export function App() {
                 <div className="border-t border-slate-100 px-5 py-5 space-y-4">
                   <AgentFieldFrame path="/kosten/kostenErfassungMode">
                     <div className="space-y-1.5">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Kostenerfassung</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        Berechnungsart laufende Kosten
+                      </span>
                       <Tabs
                         activeTab={kostenErfassungMode}
                         onChange={(id) => updateActive((d) => {
@@ -2714,7 +2901,8 @@ export function App() {
                         ]}
                       />
                       <p className="text-[10px] leading-relaxed text-slate-500">
-                        Beim Wechsel bleiben die Eingaben des jeweils anderen Modus gespeichert. Berechnet wird nur der aktive Modus.
+                        Beim Wechsel bleiben die Eingaben der jeweils anderen Methode gespeichert. Berechnet wird
+                        ausschließlich die aktive Berechnungsart.
                       </p>
                     </div>
                   </AgentFieldFrame>
@@ -2835,7 +3023,9 @@ export function App() {
                     <>
                       <AgentFieldFrame path="/kosten/maintenanceMode">
                         <div className="space-y-1.5">
-                          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Instandhaltung Modus</span>
+                          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            Berechnungsart Instandhaltung
+                          </span>
                           <Tabs
                             activeTab={active.kosten.maintenanceMode}
                             onChange={(id) => updateActive((d) => { d.kosten.maintenanceMode = id as MaintenanceMode; })}
@@ -2845,6 +3035,9 @@ export function App() {
                               { id: 'absolute', label: 'Absolut p. a.' },
                             ]}
                           />
+                          <p className="text-[10px] leading-relaxed text-slate-500">
+                            Nur die aktive Instandhaltungsmethode wird berechnet; die beiden anderen Werte bleiben gespeichert.
+                          </p>
                         </div>
                       </AgentFieldFrame>
                       {active.kosten.maintenanceMode === 'perSqm' && (
@@ -2936,6 +3129,37 @@ export function App() {
                       </div>
                     </>
                   )}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <NumberInput
+                        label="Sondereigentumsverwaltung (SEV) p. a."
+                        value={active.kosten.sevProJahr ?? 0}
+                        suffix="EUR"
+                        min={0}
+                        fractionDigits={2}
+                        onChange={(val) => updateActive((d) => { d.kosten.sevProJahr = val; })}
+                      />
+                      <p className="text-[10px] leading-relaxed text-slate-500">
+                        {kostenErfassungMode === 'wirtschaftsplan'
+                          ? 'Separates SEV-Honorar (nicht umlagefähig, sofort abziehbar). Nur eintragen, falls es nicht bereits in der Summe der nicht umlagefähigen Kosten enthalten ist – sonst Doppelerfassung.'
+                          : 'Separates SEV-Honorar (nicht umlagefähig, sofort abziehbar), zusätzlich zu den Verwaltungskosten oben. Doppelerfassung vermeiden.'}
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <NumberInput
+                        label="Übernommener Rücklagenbestand beim Kauf"
+                        value={active.kosten.ruecklagenBestandBeiKauf ?? 0}
+                        suffix="EUR"
+                        min={0}
+                        fractionDigits={2}
+                        onChange={(val) => updateActive((d) => { d.kosten.ruecklagenBestandBeiKauf = val; })}
+                      />
+                      <p className="text-[10px] leading-relaxed text-slate-500">
+                        Beim Kauf übernommener Bestand der WEG-Erhaltungsrücklage. Setzt nur den angezeigten kumulierten
+                        Rücklagenbestand als Startwert; ein Exit-Erlös daraus entsteht erst mit einer Preiswirkung &gt; 0 (unten).
+                      </p>
+                    </div>
+                  </div>
                   <AgentFieldFrame path="/kosten/ruecklagenRestwertPct">
                   <div className="space-y-1.5">
                     <Slider
@@ -3462,8 +3686,9 @@ export function App() {
 
                   {/* Value appreciation mini chart */}
                   {valueChartData.length > 0 && (
-                    <div className="h-32 w-full mt-4 bg-slate-50/50 rounded-xl p-2 border border-slate-100">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Vorschau Immobilienwert (€)</span>
+                    <div className="h-36 w-full mt-4 bg-slate-50/50 rounded-xl p-2 border border-slate-100">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Vorschau Immobilienwert (€)</span>
+                      <span className="text-[10px] text-slate-400 block mb-1">Jahresendwerte: Jahr 1 enthält bereits die erste Wertsteigerung. Die Miete dagegen wird als Jahresbetrag geführt (Jahr 1 = Startmiete), sie steigt erst ab Jahr 2.</span>
                       <ResponsiveContainer width="100%" height="90%">
                         <AreaChart data={valueChartData} margin={{ top: 2, right: 5, left: 0, bottom: 2 }}>
                           <defs>
@@ -3514,7 +3739,7 @@ export function App() {
                       value={active.exit.haltedauerJahre}
                       onChange={(val) => updateActive((d) => { d.exit.haltedauerJahre = val; })}
                       min={1}
-                      max={40}
+                      max={MAX_HOLDING_PERIOD_YEARS}
                       step={1}
                     />
                     </AgentFieldFrame>
@@ -3658,9 +3883,9 @@ export function App() {
               <KPICard
                 label="IRR p. a."
                 value={formatPercent(metrics.irr)}
-                trend={metrics.rating === 'green' ? 'positive' : metrics.rating === 'red' ? 'negative' : 'neutral'}
-                subtext={bestIrrExitYear ? `Bestes Jahr: ${bestIrrExitYear.jahr} (${formatPercent(bestIrrExitYear.irrPct)})` : 'Interner Zinsfuss'}
-                tooltip="IRR ist der interne Zinsfuss der Eigenkapital-Cashflows inklusive laufender Cashflows und Verkaufserloes. Eine positive Ruecklagen-Preiswirkungsquote wirkt nur ueber einen entsprechend hoeher angesetzten Immobilienpreis."
+                trend={metrics.irrRating === 'green' ? 'positive' : metrics.irrRating === 'red' ? 'negative' : 'neutral'}
+                subtext={bestIrrExitYear ? `Bestes Jahr bis ${MAX_HOLDING_PERIOD_YEARS}: ${bestIrrExitYear.jahr} (${formatPercent(bestIrrExitYear.irrPct)})` : 'Interner Zinsfuss'}
+                tooltip="IRR ist der interne Zinsfuss der Eigenkapital-Cashflows inklusive laufender Cashflows und Verkaufserloes. Die Ampel dieser Kachel bewertet ausschliesslich die IRR gegen die Zielrendite. Das Gesamturteil beruecksichtigt zusaetzlich die laufende Liquiditaet (jaehrliche Cashflows nach Steuern). Eine positive Ruecklagen-Preiswirkungsquote wirkt nur ueber einen entsprechend hoeher angesetzten Immobilienpreis."
               />
               <KPICard
                 label={`Cashflow Monat · Jahr ${selectedProjectionYear.jahr}`}
@@ -3744,18 +3969,31 @@ export function App() {
                     {
                       label: 'Eigenkapitalrendite (IRR) p. a.',
                       value: formatPercent(metrics.irr),
-                      color: metrics.rating === 'green' ? 'text-emerald-700' : metrics.rating === 'red' ? 'text-rose-700' : 'text-amber-600',
+                      color: metrics.irrRating === 'green' ? 'text-emerald-700' : metrics.irrRating === 'red' ? 'text-rose-700' : 'text-amber-600',
                       desc: 'Interner Zinsfuß auf den baren Kapitaleinsatz inkl. Verkauf',
-                      tooltip: 'IRR annualisiert alle Eigenkapital-Zahlungsstroeme: Start-Einsatz, laufende Cashflows und Netto-Verkaufserloes.',
+                      tooltip: 'IRR annualisiert alle Eigenkapital-Zahlungsstroeme: Start-Einsatz, laufende Cashflows und Netto-Verkaufserloes. Die Ampel bewertet nur die IRR gegen die Zielrendite – die laufende Liquiditaet steckt im separaten Gesamturteil.',
+                    },
+                    {
+                      label: 'Gesamturteil (IRR + Liquidität)',
+                      value: metrics.rating === 'green' ? 'Solide' : metrics.rating === 'red' ? 'Kritisch' : 'Mit Vorbehalt',
+                      color: metrics.rating === 'green' ? 'text-emerald-700' : metrics.rating === 'red' ? 'text-rose-700' : 'text-amber-600',
+                      desc:
+                        metrics.liquidityRating === 'green'
+                          ? 'Rendite- und Liquiditätslage zusammengeführt · alle Jahres-Cashflows ≥ 0'
+                          : metrics.liquidityRating === 'red'
+                            ? 'Rendite- und Liquiditätslage zusammengeführt · jedes Jahr negativer Cashflow'
+                            : 'Rendite- und Liquiditätslage zusammengeführt · Cashflows teils negativ',
+                      tooltip:
+                        'Grün nur, wenn IRR (≥ Zielrendite) UND Liquidität (alle jährlichen Cashflows nach Steuern ≥ 0) grün sind. Rot, sobald eines von beiden rot ist (IRR < 0 oder jedes Jahr negativ). Sonst gelb. So kaschiert eine gute IRR aus dem Verkaufserlös keine dauerhaft negative laufende Liquidität.',
                     },
                     {
                       label: 'Max. Profitabilität (IRR)',
                       value: bestIrrExitYear ? `Jahr ${bestIrrExitYear.jahr} · ${formatPercent(bestIrrExitYear.irrPct)}` : '–',
                       color: bestIrrExitYear && bestIrrExitYear.irrPct >= metrics.irr ? 'text-emerald-700' : 'text-slate-700',
                       desc: bestIrrExitYear
-                        ? `Bester Verkauf innerhalb der Haltedauer: ${formatPercent(bestIrrExitYear.irrPct)} p. a.`
+                        ? `Bester Verkauf im Vergleich von Jahr 1 bis ${MAX_HOLDING_PERIOD_YEARS}: ${formatPercent(bestIrrExitYear.irrPct)} p. a.`
                         : 'Kein bestes Verkaufsjahr ermittelbar',
-                      tooltip: 'Das Exit-Jahr mit dem hoechsten IRR innerhalb der aktuell gewaehlten Haltedauer.',
+                      tooltip: `Das Exit-Jahr mit dem hoechsten IRR bis zur maximalen Haltedauer von ${MAX_HOLDING_PERIOD_YEARS} Jahren, unabhaengig von der aktuell gewaehlten Haltedauer.`,
                     },
                     {
                       label: 'Netto-Mietrendite',
@@ -4416,7 +4654,8 @@ export function App() {
                     <CardDescription>
                       Was bleibt unterm Strich, wenn Sie nach X Jahren verkaufen? Gesamtgewinn (inkl. des bis dahin
                       aufgelaufenen, ggf. negativen Cashflows und der Spekulationssteuer) sowie die Eigenkapital-Rendite
-                      p.&nbsp;a. (IRR/CAGR) und insgesamt. Zielrendite-Vergleich: {formatPercent(etfReturnPct)} (aus ETF-Tab).
+                      p.&nbsp;a. (IRR/CAGR) und insgesamt. Der Vergleich umfasst unabhängig von der gewählten Haltedauer
+                      alle Verkaufsjahre 1 bis {MAX_HOLDING_PERIOD_YEARS}. Zielrendite-Vergleich: {formatPercent(etfReturnPct)} (aus ETF-Tab).
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -4492,6 +4731,15 @@ export function App() {
                     {/* Table: Verkauf nach Jahr X */}
                     <div className="border-t border-slate-100 pt-6 mt-2">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Verkauf nach Jahr X</h4>
+                      {active.exit.vorfaelligkeitPct === 0 &&
+                        holdingAnalysis.years.some(
+                          (y) => y.jahr < active.finanzierung.zinsbindungJahre && y.restschuld > 0
+                        ) && (
+                        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                          Für vorzeitige Verkäufe ist aktuell 0&nbsp;% Vorfälligkeitsentschädigung angesetzt.
+                          Frühe Exit-Ergebnisse (vor Ende der Zinsbindung in Jahr {active.finanzierung.zinsbindungJahre}) können dadurch zu optimistisch ausfallen.
+                        </div>
+                      )}
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs tabular-nums">
                           <thead>
@@ -4499,12 +4747,28 @@ export function App() {
                               <th className="sticky left-0 z-20 bg-white py-2 pr-3 font-semibold">Jahr</th>
                               <th className="py-2 px-3 font-semibold text-right">Immobilienwert</th>
                               <th className="py-2 px-3 font-semibold text-right">Restschuld</th>
+                              <th className="py-2 px-3 font-semibold text-right">
+                                <span className="inline-flex items-center gap-1 justify-end">
+                                  Vorfälligkeit
+                                  <InfoTooltip content="Vorfälligkeitsentschädigung auf die Restschuld bei Verkauf vor Ende der Zinsbindung (Jahr 0 = kein Betrag angesetzt). Ist bereits im Netto-Erlös abgezogen." />
+                                </span>
+                              </th>
                               <th className="py-2 px-3 font-semibold text-right">Netto-Erlös</th>
                               <th className="py-2 px-3 font-semibold text-right">Spek.-Steuer</th>
                               <th className="py-2 px-3 font-semibold text-right">Kum. Cashflow</th>
                               <th className="py-2 px-3 font-semibold text-right">Gesamtgewinn</th>
-                              <th className="py-2 px-3 font-semibold text-right">EK-Rendite Start-EK</th>
-                              <th className="py-2 px-3 font-semibold text-right">EK-Rendite inkl. Nachschuss</th>
+                              <th className="py-2 px-3 text-right text-slate-400">
+                                <span className="inline-flex items-center gap-1 justify-end">
+                                  EK-Rendite Start-EK
+                                  <InfoTooltip content="Gesamtgewinn / Start-Eigenkapital, insgesamt über die Haltedauer (nicht p. a.). Hebelsensitiv: Bei sehr geringem Start-EK reagiert diese Prozentzahl extrem auf kleine Beträge. Für die annualisierte Sicht die IRR verwenden." />
+                                </span>
+                              </th>
+                              <th className="py-2 px-3 font-bold text-right text-slate-600">
+                                <span className="inline-flex items-center gap-1 justify-end">
+                                  EK-Rendite inkl. Nachschuss
+                                  <InfoTooltip content="Gesamtgewinn / (Start-EK + alle negativen laufenden Cashflows als weitere EK-Nachschüsse), insgesamt über die Haltedauer (nicht p. a.). Robusteres Maß als die reine Start-EK-Rendite. Für die p.-a.-Sicht die IRR verwenden." />
+                                </span>
+                              </th>
                               <th className="py-2 px-3 font-semibold text-right">IRR p. a.</th>
                               <th className="py-2 pl-3 font-semibold text-right">CAGR p. a.</th>
                             </tr>
@@ -4529,6 +4793,9 @@ export function App() {
                                   </td>
                                   <td className="py-1.5 px-3 text-right">{formatEUR(y.immobilienwert)}</td>
                                   <td className="py-1.5 px-3 text-right text-slate-500">{formatEUR(y.restschuld)}</td>
+                                  <td className={`py-1.5 px-3 text-right ${y.vorfaelligkeit > 0 ? 'text-rose-500' : 'text-slate-400'}`}>
+                                    {y.vorfaelligkeit > 0 ? `-${formatEUR(y.vorfaelligkeit)}` : '–'}
+                                  </td>
                                   <td className="py-1.5 px-3 text-right">{formatEUR(y.nettoVerkaufserloesNachSteuer)}</td>
                                   <td className="py-1.5 px-3 text-right text-rose-500">
                                     {y.spekulationssteuer > 0 ? `-${formatEUR(y.spekulationssteuer)}` : '–'}
@@ -4539,8 +4806,8 @@ export function App() {
                                   <td className={`py-1.5 px-3 text-right font-semibold ${y.gesamtgewinn >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
                                     {formatEUR(y.gesamtgewinn)}
                                   </td>
-                                  <td className="py-1.5 px-3 text-right">{formatPercent(y.ekRenditeGesamtPct)}</td>
-                                  <td className="py-1.5 px-3 text-right">{formatPercent(y.ekRenditeGesamteinsatzPct)}</td>
+                                  <td className="py-1.5 px-3 text-right text-slate-400">{formatPercent(y.ekRenditeGesamtPct)}</td>
+                                  <td className="py-1.5 px-3 text-right font-semibold text-slate-700">{formatPercent(y.ekRenditeGesamteinsatzPct)}</td>
                                   <td className={`py-1.5 px-3 text-right font-semibold ${irrColor}`}>{formatPercent(y.irrPct)}</td>
                                   <td className="py-1.5 pl-3 text-right text-slate-500">{formatPercent(y.cagrPct)}</td>
                                 </tr>
@@ -4552,9 +4819,19 @@ export function App() {
                       <p className="text-[10px] text-slate-400 mt-3">
                         Blaue Zeile = aktuell gewählte Haltedauer ({active.exit.haltedauerJahre} Jahre). Gesamtgewinn = kumulierter
                         Cashflow nach Steuer + Netto-Verkaufserlös nach Spekulationssteuer − eingesetztes Eigenkapital
-                        ({formatEUR(holdingAnalysis.initialEquity)}). EK-Rendite Gesamteinsatz nutzt als Nenner Start-EK plus alle
-                        negativen laufenden Cashflows als weitere EK-Nachschüsse.
+                        ({formatEUR(holdingAnalysis.initialEquity)}). Beide EK-Rendite-Spalten sind Gesamtrenditen über die
+                        gesamte Haltedauer, nicht p. a. – die annualisierte Sicht liefert die IRR-Spalte. „EK-Rendite inkl.
+                        Nachschuss" nutzt als Nenner Start-EK plus alle negativen laufenden Cashflows als weitere EK-Nachschüsse
+                        und ist das robustere Maß; „EK-Rendite Start-EK" ist hebelsensitiv.
                       </p>
+                      {cashBreakdown.enteredEquity <= 0 && cashBreakdown.unfinancedKnkCash > 0 && (
+                        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] text-amber-800">
+                          Hinweis zur Hebelwirkung: Der Start-EK-Nenner besteht bei dieser Finanzierung hauptsächlich bzw. nur
+                          aus bar gezahlten Kaufnebenkosten ({formatEUR(cashBreakdown.unfinancedKnkCash)}). Prozentkennzahlen auf
+                          das Start-EK reagieren deshalb extrem auf kleine Beträge – orientieren Sie sich vorrangig an „EK-Rendite
+                          inkl. Nachschuss" und der IRR.
+                        </p>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

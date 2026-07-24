@@ -226,4 +226,47 @@ describe('buildAmortizationSchedule', () => {
     expect(result.laufzeitMonate).toBe(12);
     expect(result.laufzeitJahre).toBe(1);
   });
+
+  // Der zusammengefasste Volltilgungs-Zweig (frueher zwei identische push-Bloecke fuer
+  // "mitten im Jahr" bzw. "genau zum Jahresende") muss in beiden Faellen genau eine
+  // Jahreszeile fuer das Tilgungsjahr erzeugen, mit Endbestand 0.
+  it('emits exactly one year row when the loan is fully repaid mid-year via annuity', () => {
+    // Sehr hohe Tilgung: das Darlehen ist bereits in Monat 3 vollstaendig getilgt.
+    const result = buildAmortizationSchedule({
+      loanAmount: 10000,
+      sollzinsPct: 3,
+      tilgungPct: 400,
+      zinsbindungJahre: 10,
+      anschlussTilgungPct: null,
+      anschlusszinsPct: 3,
+      sondertilgungProJahr: 0,
+      haltedauerJahre: 15,
+    });
+
+    expect(result.laufzeitMonate % 12).not.toBe(0); // unterjaehrig getilgt
+    const tilgungsjahr = Math.ceil(result.laufzeitMonate / 12);
+    const rowsForYear = result.years.filter(y => y.jahr === tilgungsjahr);
+    expect(rowsForYear).toHaveLength(1);
+    expect(rowsForYear[0].endbestand).toBe(0);
+  });
+
+  it('emits exactly one year row when the loan is fully repaid exactly at year end via annuity', () => {
+    // Tilgung 100 % p. a.: das Darlehen ist exakt am Ende von Jahr 1 (Monat 12) getilgt.
+    const result = buildAmortizationSchedule({
+      loanAmount: 10000,
+      sollzinsPct: 3,
+      tilgungPct: 100,
+      zinsbindungJahre: 10,
+      anschlussTilgungPct: null,
+      anschlusszinsPct: 3,
+      sondertilgungProJahr: 0,
+      haltedauerJahre: 15,
+    });
+
+    expect(result.laufzeitMonate % 12).toBe(0); // genau zum Jahresende getilgt
+    const tilgungsjahr = Math.ceil(result.laufzeitMonate / 12);
+    const rowsForYear = result.years.filter(y => y.jahr === tilgungsjahr);
+    expect(rowsForYear).toHaveLength(1);
+    expect(rowsForYear[0].endbestand).toBe(0);
+  });
 });

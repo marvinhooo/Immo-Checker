@@ -183,6 +183,7 @@ describe('rent engine - rule results', () => {
 describe('rent engine - projectCosts', () => {
   it('should project costs with perSqm maintenance', () => {
     const input: KostenInput = {
+      kostenErfassungMode: 'detailliert',
       maintenanceMode: 'perSqm',
       instandhaltungProSqm: 10, // 10 EUR / sqm / year
       instandhaltungPctRent: 0,
@@ -216,6 +217,7 @@ describe('rent engine - projectCosts', () => {
 
   it('should project costs with percentRent maintenance', () => {
     const input: KostenInput = {
+      kostenErfassungMode: 'detailliert',
       maintenanceMode: 'percentRent',
       instandhaltungProSqm: 0,
       instandhaltungPctRent: 10, // 10% of rent
@@ -243,6 +245,33 @@ describe('rent engine - projectCosts', () => {
     expect(projection[1].verwaltung).toBeCloseTo(206, 4);
     expect(projection[1].sonstigeKosten).toBeCloseTo(103, 4);
     expect(projection[1].summeKosten).toBeCloseTo(1609, 4);
+  });
+
+  it('ignores Wirtschaftsplan values when the detailed method is active', () => {
+    const input: KostenInput = {
+      kostenErfassungMode: 'detailliert',
+      umlagefaehigeKostenProJahr: 99999,
+      nichtUmlagefaehigeKostenProJahr: 99999,
+      wegRuecklageProJahr: 99999,
+      maintenanceMode: 'absolute',
+      instandhaltungProSqm: 0,
+      instandhaltungPctRent: 0,
+      instandhaltungAbsolut: 500,
+      ruecklagenAnteilPct: 20,
+      verwaltungProJahr: 300,
+      sonstigeKostenProJahr: 200,
+      kostensteigerungPctPa: 0,
+    };
+
+    const [year1] = projectCosts(input, 40, [3600], 1, 10);
+
+    expect(year1.summeKosten).toBe(1000);
+    expect(year1.instandhaltung).toBe(500);
+    expect(year1.verwaltung).toBe(300);
+    expect(year1.sonstigeKosten).toBe(200);
+    expect(year1.umlagefaehigeKosten).toBe(0);
+    expect(year1.nichtUmlagefaehigeKosten).toBe(900);
+    expect(year1.wegRuecklage).toBe(100);
   });
 
   it('maps Wirtschaftsplan sums and charges the vacancy share of apportionable costs', () => {
@@ -281,5 +310,75 @@ describe('rent engine - projectCosts', () => {
     expect(projection[1].nichtUmlagefaehigeKosten).toBeCloseTo(554.06 * 1.02, 6);
     expect(projection[1].wegRuecklage).toBeCloseTo(456 * 1.02, 6);
     expect(projection[1].summeKosten).toBeCloseTo(1045.9097 * 1.02, 6);
+  });
+
+  it('adds SEV as a deductible owner cost and grows it in the detailed mode', () => {
+    const input: KostenInput = {
+      kostenErfassungMode: 'detailliert',
+      maintenanceMode: 'absolute',
+      instandhaltungProSqm: 0,
+      instandhaltungPctRent: 0,
+      instandhaltungAbsolut: 0,
+      ruecklagenAnteilPct: 0,
+      verwaltungProJahr: 0,
+      sonstigeKostenProJahr: 0,
+      sevProJahr: 300,
+      kostensteigerungPctPa: 2,
+    };
+
+    const projection = projectCosts(input, 50, [12000, 12240], 2);
+    // Jahr 1: SEV ist sofort abziehbar und Teil des Cashouts.
+    expect(projection[0].sev).toBe(300);
+    expect(projection[0].sofortAbziehbareKosten).toBe(300);
+    expect(projection[0].summeKosten).toBe(300);
+    // Jahr 2: waechst mit der allgemeinen Kostensteigerung.
+    expect(projection[1].sev).toBeCloseTo(306, 6);
+    expect(projection[1].sofortAbziehbareKosten).toBeCloseTo(306, 6);
+  });
+
+  it('adds SEV on top of the Wirtschaftsplan sums without polluting the non-apportionable sum', () => {
+    const input: KostenInput = {
+      kostenErfassungMode: 'wirtschaftsplan',
+      umlagefaehigeKostenProJahr: 0,
+      nichtUmlagefaehigeKostenProJahr: 500,
+      wegRuecklageProJahr: 100,
+      ruecklagenVerwendungPct: 50,
+      ruecklagenVerzoegerungJahre: 5,
+      maintenanceMode: 'absolute',
+      instandhaltungProSqm: 0,
+      instandhaltungPctRent: 0,
+      instandhaltungAbsolut: 0,
+      ruecklagenAnteilPct: 0,
+      verwaltungProJahr: 0,
+      sonstigeKostenProJahr: 0,
+      sevProJahr: 240,
+      kostensteigerungPctPa: 2,
+    };
+
+    const projection = projectCosts(input, 50, [12000, 12240], 2, 0);
+    // SEV bleibt aus der Wirtschaftsplansumme heraus, ist aber sofort abziehbar.
+    expect(projection[0].sev).toBe(240);
+    expect(projection[0].nichtUmlagefaehigeKosten).toBe(500);
+    expect(projection[0].sofortAbziehbareKosten).toBe(740); // 500 + 0 Leerstand + 240 SEV
+    expect(projection[0].summeKosten).toBe(840); // 740 + 100 Ruecklage
+    expect(projection[1].sev).toBeCloseTo(244.8, 6);
+  });
+
+  it('defaults SEV to zero when the field is absent', () => {
+    const input: KostenInput = {
+      kostenErfassungMode: 'detailliert',
+      maintenanceMode: 'absolute',
+      instandhaltungProSqm: 0,
+      instandhaltungPctRent: 0,
+      instandhaltungAbsolut: 400,
+      ruecklagenAnteilPct: 0,
+      verwaltungProJahr: 0,
+      sonstigeKostenProJahr: 0,
+      kostensteigerungPctPa: 0,
+    };
+
+    const [year1] = projectCosts(input, 50, [12000], 1);
+    expect(year1.sev).toBe(0);
+    expect(year1.summeKosten).toBe(400);
   });
 });

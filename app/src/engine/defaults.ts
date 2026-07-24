@@ -83,6 +83,8 @@ export function createDefaultScenario(overrides: DeepPartial<Scenario> = {}): Sc
       wegRuecklageProJahr: 0,
       ruecklagenVerwendungPct: 50,
       ruecklagenVerzoegerungJahre: 5,
+      ruecklagenBestandBeiKauf: 0,
+      sevProJahr: 0,
       maintenanceMode: 'perSqm',
       instandhaltungProSqm: 20,
       instandhaltungPctRent: 8,

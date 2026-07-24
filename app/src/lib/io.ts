@@ -1,6 +1,7 @@
 import { Scenario, SCHEMA_VERSION } from '../engine/types';
 import { ProjectionYear } from '../engine/projection';
 import { isAgentFieldPath } from '../agent/contract';
+import { MAX_HOLDING_PERIOD_YEARS } from '../engine/constants';
 
 const BUNDESLAENDER = ['BW', 'BY', 'BE', 'BB', 'HB', 'HH', 'HE', 'MV', 'NI', 'NW', 'RP', 'SL', 'SN', 'ST', 'SH', 'TH'] as const;
 const OBJEKT_TYPEN = ['bestand', 'neubau', 'denkmal'] as const;
@@ -466,6 +467,18 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   } else {
     requireNumberInRange(kosten, 'ruecklagenRestwertPct', 0, 100, prefix);
   }
+  if (kosten.ruecklagenBestandBeiKauf === undefined || kosten.ruecklagenBestandBeiKauf === null) {
+    // Additives Feld: uebernommener WEG-Ruecklagenbestand; aeltere Exporte starten bei 0.
+    kosten.ruecklagenBestandBeiKauf = 0;
+  } else {
+    requireNumberInRange(kosten, 'ruecklagenBestandBeiKauf', 0, Number.MAX_SAFE_INTEGER, prefix);
+  }
+  if (kosten.sevProJahr === undefined || kosten.sevProJahr === null) {
+    // Additives Feld: Sondereigentumsverwaltung; aeltere Exporte starten bei 0.
+    kosten.sevProJahr = 0;
+  } else {
+    requireNumberInRange(kosten, 'sevProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
+  }
   requireNumberInRange(kosten, 'verwaltungProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
   requireNumberInRange(kosten, 'sonstigeKostenProJahr', 0, Number.MAX_SAFE_INTEGER, prefix);
   requireNumberInRange(kosten, 'kostensteigerungPctPa', 0, 100, prefix);
@@ -486,7 +499,7 @@ export function validateScenario(s: unknown, index?: number): Scenario {
   validateIncreaseRules(wertentwicklung.szenario, 'Wertentwicklung-Szenario', prefix);
 
   const exit = requireSection(s, 'exit', prefix);
-  requireIntegerInRange(exit, 'haltedauerJahre', 1, 40, prefix);
+  requireIntegerInRange(exit, 'haltedauerJahre', 1, MAX_HOLDING_PERIOD_YEARS, prefix);
   const hasVerkaufsnebenkostenMode = exit.verkaufsnebenkostenMode !== undefined
     && exit.verkaufsnebenkostenMode !== null;
   const hasVerkaufsnebenkostenAbsolut = exit.verkaufsnebenkostenAbsolut !== undefined

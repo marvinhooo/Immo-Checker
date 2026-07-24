@@ -429,39 +429,9 @@ function normalizeDependentFields(scenario: Scenario, supplied: Set<string>): Se
       : 0;
   }
 
-  const suppliedWirtschaftsplanCosts = [
-    '/kosten/umlagefaehigeKostenProJahr',
-    '/kosten/nichtUmlagefaehigeKostenProJahr',
-    '/kosten/wegRuecklageProJahr',
-  ].some((path) => supplied.has(path));
-  const suppliedDetailedCosts = [
-    '/kosten/maintenanceMode',
-    '/kosten/instandhaltungProSqm',
-    '/kosten/instandhaltungPctRent',
-    '/kosten/instandhaltungAbsolut',
-    '/kosten/ruecklagenAnteilPct',
-    '/kosten/verwaltungProJahr',
-    '/kosten/sonstigeKostenProJahr',
-  ].some((path) => supplied.has(path));
-  if (!supplied.has('/kosten/kostenErfassungMode') && suppliedWirtschaftsplanCosts) {
-    if (suppliedDetailedCosts) {
-      throw new Error('Wirtschaftsplan- und Detailkosten benoetigen eine explizite Operation fuer /kosten/kostenErfassungMode.');
-    }
-    scenario.kosten.kostenErfassungMode = 'wirtschaftsplan';
-    derived.add('/kosten/kostenErfassungMode');
-  }
-
-  const suppliedBodenwerte = ['/objekt/bodenwertAnteilPct', '/objekt/bodenrichtwertProSqm']
-    .filter((path) => supplied.has(path));
-  if (!supplied.has('/objekt/bodenwertMode') && suppliedBodenwerte.length === 1) {
-    scenario.objekt.bodenwertMode = suppliedBodenwerte[0].endsWith('AnteilPct') ? 'percent' : 'perSqm';
-    derived.add('/objekt/bodenwertMode');
-  } else if (!supplied.has('/objekt/bodenwertMode') && suppliedBodenwerte.length > 1) {
-    throw new Error('Mehrere Bodenwerte benoetigen eine explizite Operation fuer /objekt/bodenwertMode.');
-  }
-  // Prozentwert, Bodenrichtwert, Grundstuecksflaeche und MEA bleiben unabhaengige
-  // Rohangaben. Der aktive Modus entscheidet nur, welche Werte die Engine nutzt;
-  // unvollstaendige Angaben duerfen bereits gelieferte Werte nicht ueberschreiben.
+  // Kosten- und Bodenwert-Rohangaben bleiben voneinander unabhaengig gespeichert.
+  // Ausschliesslich eine explizite Modus-Operation darf festlegen, welche davon
+  // die Engine verwendet; das blosse Befuellen eines inaktiven Felds schaltet nie um.
 
   const suppliedExitCosts = [
     '/exit/verkaufsnebenkostenPct',

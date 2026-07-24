@@ -2,7 +2,7 @@ import { Scenario } from './types';
 import { totalInvest, cashInvestment, loanAmount } from './derive';
 import { buildAmortizationSchedule, AmortizationInput } from './financing';
 import { projectRent, projectCosts } from './rent';
-import { projectSeries } from './timeline';
+import { projectEndOfYearSeries } from './timeline';
 import { projectAfa } from './afa';
 import { calculateTaxEffect } from './tax';
 import { projectRenovations } from './renovation';
@@ -121,14 +121,21 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
   // 5. Geplante Sanierungen berechnen (Auszahlungen, Werbungskosten und Zusatz-AfA)
   const renovationProjection = projectRenovations(scenario, safeYears);
 
-  // 6. Immobilienwert-Entwicklung berechnen (Länge safeYears + 1 für Endwerte)
-  const valueSeries = projectSeries(scenario.objekt.kaufpreis, scenario.wertentwicklung.szenario, safeYears + 1);
+  // 6. Immobilienwert-Entwicklung berechnen (Bestandsgröße: Wert am Ende von Jahr 1..safeYears)
+  const endOfYearValues = projectEndOfYearSeries(
+    scenario.objekt.kaufpreis,
+    scenario.wertentwicklung.szenario,
+    safeYears
+  );
 
   const years: ProjectionYear[] = [];
   let runningCashflowNachSteuer = 0;
   let runningSteuerersparnis = 0;
   let runningSondertilgung = 0;
-  let runningRuecklage = 0;
+  // Beim Kauf uebernommener WEG-Ruecklagenbestand als Startwert der laufenden Ruecklage.
+  // Wirkt nur auf den ausgewiesenen kumulierten Bestand; ein Exit-Restwert entsteht daraus
+  // erst bei ruecklagenRestwertPct > 0 (Default 0 -> keine stillschweigende Ergebnisaenderung).
+  let runningRuecklage = Math.max(0, scenario.kosten.ruecklagenBestandBeiKauf ?? 0);
 
   for (let t = 1; t <= safeYears; t++) {
     const idx = t - 1;
@@ -163,7 +170,7 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
     // Ruecklagenzufuehrungen (z. B. WEG-Erhaltungsruecklage) sind Cash-out, aber erst bei
     // Verausgabung als Werbungskosten abziehbar - sie mindern das V&V-Ergebnis nicht.
     const ruecklagenZufuehrung = costProjection[idx]?.wegRuecklage || 0;
-    const wirtschaftsplanMode = (scenario.kosten.kostenErfassungMode ?? 'detailliert') === 'wirtschaftsplan';
+    const wirtschaftsplanMode = scenario.kosten.kostenErfassungMode === 'wirtschaftsplan';
     const ruecklagenVerwendungPct = Math.min(100, Math.max(0, scenario.kosten.ruecklagenVerwendungPct ?? 50));
     const ruecklagenVerzoegerungJahre = Math.max(1, Math.trunc(scenario.kosten.ruecklagenVerzoegerungJahre ?? 5));
     const sourceIndex = idx - ruecklagenVerzoegerungJahre;
@@ -194,7 +201,7 @@ export function runProjection(scenario: Scenario, projectionYears?: number): Pro
     const cashflowNachSteuerMonatlich = cashflowNachSteuer / 12;
 
     // Vermögenswerte am Jahresende
-    const immobilienwert = valueSeries[t] !== undefined ? valueSeries[t] : scenario.objekt.kaufpreis;
+    const immobilienwert = endOfYearValues[idx] !== undefined ? endOfYearValues[idx] : scenario.objekt.kaufpreis;
     const restschuld = amortization.years[idx]?.endbestand !== undefined ? amortization.years[idx].endbestand : 0;
     const eigenkapital = immobilienwert - restschuld;
 

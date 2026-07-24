@@ -27,7 +27,7 @@ describe('Bodenwert derivation', () => {
     expect(effectiveBodenwertAnteilPct(scenario)).toBeCloseTo(((620 * 31.35) / 60000) * 100, 6);
   });
 
-  it('uses a conservative 30 percent fallback without overwriting partial raw values', () => {
+  it('uses the temporary 30 percent fallback without overwriting partial raw values', () => {
     const scenario = createDefaultScenario({
       objekt: {
         kaufpreis: 60000,
@@ -53,6 +53,39 @@ describe('Bodenwert derivation', () => {
     expect(landValueAmount(scenario)).toBeCloseTo(620 * 31.35, 6);
     expect(scenario.objekt.bodenwertAnteilPct).toBe(17);
     expect(scenario.objekt.bodenrichtwertProSqm).toBe(620);
+  });
+
+  it('uses only the explicitly active land-value method and preserves both raw inputs', () => {
+    const scenario = createDefaultScenario({
+      objekt: {
+        kaufpreis: 60000,
+        bodenwertMode: 'percent',
+        bodenwertAnteilPct: 17,
+        bodenrichtwertProSqm: 650,
+        grundstuecksflaeche: 550,
+        miteigentumsanteilZaehler: 57,
+        miteigentumsanteilNenner: 1000,
+      },
+    });
+    const rawInputs = {
+      bodenwertAnteilPct: scenario.objekt.bodenwertAnteilPct,
+      bodenrichtwertProSqm: scenario.objekt.bodenrichtwertProSqm,
+      grundstuecksflaeche: scenario.objekt.grundstuecksflaeche,
+      miteigentumsanteilZaehler: scenario.objekt.miteigentumsanteilZaehler,
+      miteigentumsanteilNenner: scenario.objekt.miteigentumsanteilNenner,
+    };
+
+    expect(landValueAmount(scenario)).toBe(10200);
+
+    scenario.objekt.bodenwertMode = 'perSqm';
+    expect(landValueAmount(scenario)).toBeCloseTo(20377.5, 6);
+    expect({
+      bodenwertAnteilPct: scenario.objekt.bodenwertAnteilPct,
+      bodenrichtwertProSqm: scenario.objekt.bodenrichtwertProSqm,
+      grundstuecksflaeche: scenario.objekt.grundstuecksflaeche,
+      miteigentumsanteilZaehler: scenario.objekt.miteigentumsanteilZaehler,
+      miteigentumsanteilNenner: scenario.objekt.miteigentumsanteilNenner,
+    }).toEqual(rawInputs);
   });
 
   it('does not use an impossible MEA ratio above 100 percent', () => {

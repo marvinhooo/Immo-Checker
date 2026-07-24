@@ -70,29 +70,36 @@ describe('Agent-Draft-Vertrag', () => {
     });
   });
 
-  it('leitet den Wirtschaftsplan-Modus aus direkt gelieferten Kostensummen ab', () => {
+  it('schaltet bei gelieferten Kostenwerten ohne expliziten Modus nicht um', () => {
     const draft = createAgentDraftExample();
     draft.operations.push(
       { op: 'set', path: '/kosten/umlagefaehigeKostenProJahr', value: 1194.99, origin: 'extracted' },
       { op: 'set', path: '/kosten/nichtUmlagefaehigeKostenProJahr', value: 554.06, origin: 'extracted' },
       { op: 'set', path: '/kosten/wegRuecklageProJahr', value: 456, origin: 'extracted' },
+      { op: 'set', path: '/kosten/instandhaltungAbsolut', value: 777, origin: 'extracted' },
     );
 
     const scenario = materializeAgentDraft(draft);
 
-    expect(scenario.kosten.kostenErfassungMode).toBe('wirtschaftsplan');
+    expect(scenario.kosten.kostenErfassungMode).toBe('detailliert');
+    expect(scenario.kosten.umlagefaehigeKostenProJahr).toBe(1194.99);
+    expect(scenario.kosten.instandhaltungAbsolut).toBe(777);
     expect(scenario.agentReview?.fields['/kosten/kostenErfassungMode']).toMatchObject({
-      status: 'uncertain',
-      origin: 'derived',
+      status: 'missing',
+      origin: 'assumption',
       required: true,
     });
-    expect(scenario.agentReview?.fields['/kosten/umlagefaehigeKostenProJahr']?.required).toBe(true);
-    expect(scenario.agentReview?.fields['/kosten/maintenanceMode']).toBeUndefined();
+    expect(scenario.agentReview?.fields['/kosten/umlagefaehigeKostenProJahr']?.required).toBe(false);
+    expect(scenario.agentReview?.fields['/kosten/maintenanceMode']).toMatchObject({
+      status: 'missing',
+      required: true,
+    });
   });
 
-  it('bewahrt den inaktiven Prozentwert bei Bodenrichtwert, Grundstück und MEA', () => {
+  it('bewahrt beide Bodenwertmethoden und schaltet ohne expliziten Modus nicht um', () => {
     const draft = createAgentDraftExample();
     draft.operations.push(
+      { op: 'set', path: '/objekt/bodenwertAnteilPct', value: 17, origin: 'extracted' },
       { op: 'set', path: '/objekt/bodenrichtwertProSqm', value: 620, origin: 'extracted' },
       { op: 'set', path: '/objekt/grundstuecksflaeche', value: 550, origin: 'extracted' },
       { op: 'set', path: '/objekt/miteigentumsanteilZaehler', value: 57, origin: 'extracted' },
@@ -102,9 +109,33 @@ describe('Agent-Draft-Vertrag', () => {
     const scenario = materializeAgentDraft(draft);
 
     expect(scenario.objekt.bodenwertMode).toBe('perSqm');
-    expect(scenario.objekt.bodenwertAnteilPct).toBe(30);
+    expect(scenario.objekt.bodenwertAnteilPct).toBe(17);
     expect(scenario.objekt.bodenrichtwertProSqm).toBe(620);
     expect(scenario.objekt.grundstuecksflaeche).toBe(550);
+    expect(scenario.agentReview?.fields['/objekt/bodenwertMode']).toMatchObject({
+      status: 'missing',
+      origin: 'assumption',
+      required: true,
+    });
+  });
+
+  it('schaltet bei einem allein gelieferten Prozentwert nicht still auf Prozent um', () => {
+    const draft = createAgentDraftExample();
+    draft.operations.push({
+      op: 'set',
+      path: '/objekt/bodenwertAnteilPct',
+      value: 17,
+      origin: 'extracted',
+    });
+
+    const scenario = materializeAgentDraft(draft);
+
+    expect(scenario.objekt.bodenwertMode).toBe('perSqm');
+    expect(scenario.objekt.bodenwertAnteilPct).toBe(17);
+    expect(scenario.agentReview?.fields['/objekt/bodenwertMode']).toMatchObject({
+      status: 'missing',
+      required: true,
+    });
   });
 
   it('ueberschreibt explizit gelieferte Bodenwert-Rohangaben nicht gegenseitig', () => {

@@ -36,7 +36,7 @@ OUTPUT-ERWARTUNG AN DICH
 ========================================
 
 - Implementiere alles direkt im Repository (Vite-Projekt im Repo-Root bzw. in `app/`).
-- Arbeite Schritt fuer Schritt von Story 0 bis Story 13 bis zum Ende.
+- Arbeite Schritt fuer Schritt von Story 0 bis Story 14 bis zum Ende.
 - Zeige bei jedem Schritt konkrete Dateipfade und Testergebnisse (`npm run test`, `npm run build`).
 - Trenne strikt: Rechenkern (`src/engine/*`, pure Funktionen, voll getestet) vs. UI (`src/components/*`, `src/app/*`).
 - Bei Tradeoffs entscheide pragmatisch im Sinne von: `fachlich korrekt und nachvollziehbar bei minimaler Komplexitaet`.
@@ -93,15 +93,16 @@ ARBEITSAUFTRAG: SCHRITT-FUER-SCHRITT UMSETZEN
 ========================================
 
 Allgemeine Arbeitsregeln:
-- Arbeite sequenziell von Story 0 bis Story 13.
+- Arbeite sequenziell von Story 0 bis Story 14.
 - Nach jedem Schritt: kurze Zusammenfassung, geaenderte Dateien, Test-/Command-Ergebnis, dann naechster Schritt.
 - Keine Schritte ueberspringen. Wenn etwas fehlt, implementiere sinnvollen Fallback statt zu stoppen.
 - Schreibe sauberen, testbaren Code mit klaren Schnittstellen. Rechenkern bleibt UI-frei und deterministisch.
 - Jede Engine-Story braucht Unit-Tests mit mind. einem von Hand nachgerechneten Referenzfall.
 
-## Handover Naechster Thread (Stand: 2026-07-22)
-- Implementiert und lokal verifiziert: Stories 0 bis 13 sowie die nachtraeglichen Produkt-Erweiterungen inklusive versioniertem Agent-Draft, Agent Edit Mode, accountgebundener Browser-Agent-API, Remote-MCP mit Supabase-OAuth, konservativem 30-%-Bodenfallback, direktem Wirtschaftsplan-Kostenmodus und kohortenbasierter WEG-Ruecklagenverwendung. Das aktuelle Szenarioformat ist Version 3; Version 1 und 2 werden additiv migriert. `SQL_CHECKSUM.md` dokumentiert weiterhin den fuer Staging vorgesehenen SQL-Stand; den aktuellen Commit-/Pushstatus zeigt Git.
-- Offener Fokus: Keine offene Code-Story. Fuer den produktiven Remote-Betrieb bleiben SQL-Migration, OAuth-Server/Hook, kanonisches Metadata-Routing, Gateway-Rate-Limits und ein echter OAuth-/MCP-End-to-End-Test auszufuehren.
+## Handover Naechster Thread (Stand: 2026-07-24)
+- Implementiert und lokal verifiziert: Stories 0 bis 13 sowie die nachtraeglichen Produkt-Erweiterungen inklusive versioniertem Agent-Draft, Agent Edit Mode, accountgebundener Browser-Agent-API, Remote-MCP mit Supabase-OAuth, vorlaeufigem 30-%-Bodenfallback, expliziten Boden-/Kosten-Berechnungsarten, direktem Wirtschaftsplan-Kostenmodus und kohortenbasierter WEG-Ruecklagenverwendung. Das aktuelle Szenarioformat ist Version 3; Version 1 und 2 werden additiv migriert. `SQL_CHECKSUM.md` dokumentiert weiterhin den fuer Staging vorgesehenen SQL-Stand; den aktuellen Commit-/Pushstatus zeigt Git.
+- Die fuenf Agent-Aktionen der Szenarioleiste sind in einem zugaenglichen Dropdown gebuendelt; die Funktionen bleiben unveraendert.
+- Offener Fokus: Story 14 fuehrt die bereits vorhandene lokale Agent-/MCP-Schicht vollstaendig in eine produktive Supabase-Umgebung. Solange Migration, OAuth-Server/Hook, kanonisches Metadata-Routing, Rate-Limits und Live-E2E-Abnahme nicht nachgewiesen sind, ist der Agentenmodus nicht produktionsfertig.
 - Startpunkt fuer den naechsten Thread:
   1. Bei neuen Aenderungen zuerst `activity.md`, `memory.md` und dieses `PRD.md` laden.
   2. Bei Deployment-Auftrag mit `supabase/functions/agent-mcp/README.md` beginnen und erst nach erfolgreichem Live-Isolationstest aktiv schalten.
@@ -109,9 +110,11 @@ Allgemeine Arbeitsregeln:
 
 ## Wirtschaftsplan, Bodenfallback und WEG-Ruecklage (Stand: 2026-07-22)
 
-- Im Bodenrichtwertmodus verwendet die Engine die exakte Formel nur bei vollstaendigem Bodenrichtwert, Gesamtgrundstueck und gueltigem MEA (Miteigentumsanteil). Solange mindestens eine Angabe fehlt, gilt konservativ 30 % Bodenanteil am Kaufpreis. Bodenrichtwert, Prozentwert, Grundstueck und MEA bleiben als unabhaengige Rohwerte gespeichert; Moduswechsel oder der Fallback ueberschreiben sie nicht. Sobald die Angaben vollstaendig sind, greift automatisch wieder die exakte Rechnung.
+- Der Nutzer waehlt die aktive Bodenwert-Berechnungsart explizit: Prozent vom Kaufpreis oder Bodenrichtwert mal anteilige Grundstuecksflaeche. Nur die aktive Methode fliesst in Bodenwert und AfA (Absetzung fuer Abnutzung) ein; beide Eingabesaetze bleiben gespeichert. Auch ein Agent-Draft darf den Modus nicht aus gelieferten Rohwerten ableiten oder still umschalten.
+- Im Bodenrichtwertmodus verwendet die Engine die exakte Formel nur bei vollstaendigem Bodenrichtwert, Gesamtgrundstueck und gueltigem MEA (Miteigentumsanteil). Solange mindestens eine Angabe fehlt, gilt die vorlaeufige 30-%-Standardannahme am Kaufpreis. Sie ist nicht standortunabhaengig konservativ. Sind Kaufpreis, Bodenrichtwert und MEA vorhanden, zeigt die App die dazu implizite Gesamtgrundstuecksflaeche und warnt: Bei einer groesseren realen Flaeche liegt der rechnerische Bodenanteil ueber 30 %. Bodenrichtwert, Prozentwert, Grundstueck und MEA bleiben als unabhaengige Rohwerte gespeichert; Moduswechsel oder der Fallback ueberschreiben sie nicht. Sobald die Angaben vollstaendig sind, greift automatisch wieder die exakte Rechnung.
+- Amtlicher Punktabgleich fuer Paul-Heyse-Strasse 3: Leipziger Bodenrichtwertzone 71300181, Stichtag 01.01.2026, 680 EUR/m2, Wohnbaufläche, geschlossene Bauweise, WGFZ 2,4. Bei 60.000 EUR Kaufpreis und MEA 57/1000 entsprechen 30 % einer Gesamtgrundstuecksflaeche von rund 464,4 m2. Ohne die echte Flaeche aus Grundbuch, Flurstuecksnachweis oder Teilungserklaerung bleibt die 30-%-Einordnung deshalb vorlaeufig.
 - Der neue Kostenmodus `wirtschaftsplan` uebernimmt drei Jahressummen direkt: umlagefaehige Kosten, nicht umlagefaehige Kosten und Zufuehrung zur WEG-Erhaltungsruecklage. Automatisch werden geplante Kosten, geplante Vorschuesse/Hausgeld, Monats-Hausgeld, Eigentuemer-Cashout sowie sofort und nicht sofort steuerlich beruecksichtigte Betraege gezeigt. Bei Leerstand belastet der bestehende Leerstandsprozentsatz zusaetzlich den entsprechenden Anteil der sonst vom Mieter getragenen umlagefaehigen Kosten.
-- Der alte Modus `detailliert` bleibt fuer Schaetzungen unveraendert erhalten. Ein Moduswechsel bewahrt die Eingaben beider Modi; nur der aktive Satz fliesst in die Projektion ein.
+- Der alte Modus `detailliert` bleibt fuer Schaetzungen unveraendert erhalten. Die Berechnungsart fuer laufende Kosten wird explizit zwischen `wirtschaftsplan` und `detailliert` gewaehlt; innerhalb der Details wird die Instandhaltung explizit pro m2/Jahr, als Mietprozentsatz oder absolut erfasst. Moduswechsel bewahren alle Eingaben; nur der jeweils aktive Satz fliesst in die Projektion ein. Das Szenarioformat verlangt den Hauptkostenmodus ab Version 3 zwingend, Legacy-Versionen werden weiterhin auf `detailliert` migriert.
 - Im Wirtschaftsplanmodus gilt als pauschale, editierbare Standardannahme: 50 % jeder einzelnen WEG-Jahreszufuehrung werden nach durchschnittlich 5 Jahren verwendet. Die Kohortenregel ist exitunabhaengig und damit fuer Haltedauervergleiche praefixstabil. Die spaetere Verwendung ist kein zweiter Cash-Abfluss; vereinfachend wird sie dann als Werbungskosten fuer sofort abziehbaren Erhaltungsaufwand beruecksichtigt. Reale WEG-Massnahmen koennen insbesondere Herstellungskosten sein und steuerlich anders wirken. Der alte gemischte Detailmodus loest keine automatischen Entnahmen aus.
 - Der kumulierte Ruecklagenbestand entspricht Zufuehrungen abzueglich modellierter Verwendungen. Nur auf diesen verbleibenden Bestand wirkt die optionale Preiswirkungsquote; Default bleibt 0 %, weil kein separater Auszahlungsanspruch gegen die WEG besteht. Ein positiver Wert ist ausschliesslich eine geschaetzte Marktpreiswirkung: Er erhoeht den modellierten Immobilien-Verkaufspreis und damit prozentuale Verkaufskosten sowie gegebenenfalls den Gewinn nach § 23 EStG. Er wird nicht noch einmal als separates Guthaben zum Nettoerloes addiert und darf nicht bereits in der Wertentwicklung enthalten sein.
 - Szenarioformat 3 fuegt die Kostenmodus-, Wirtschaftsplan- und Verwendungsfelder hinzu. Version-1- und Version-2-Szenarien migrieren in den unveraenderten Detailmodus mit 0-EUR-Wirtschaftsplanwerten und den Annahmen 50 %/5 Jahre; damit entstehen fuer alte Szenarien keine automatischen Entnahmen. Fuer die JSONB-Szenariodaten ist keine Tabellenschema-Migration noetig. Damit Remote-MCP-Drafts die neuen Felder setzen koennen, muss jedoch die aktualisierte Validatorfunktion aus `supabase-agent-mcp.sql` deployt werden; App, Edge und SQL erlauben denselben Satz von 68 Agent-Feldpfaden.
@@ -304,7 +307,7 @@ npm run build
 
 Ergebnis: Zieltests 56/56 gruen; Gesamtsuite 153/153 gruen; Lint, Typecheck und Build gruen.
 
-## Story-Status-Uebersicht (Stand: 2026-06-20)
+## Story-Status-Uebersicht (Stand: 2026-07-24)
 | Story | Thema | Status |
 |---|---|---|
 | 0 | Projekt-Setup & Tech-Foundation | DONE |
@@ -321,6 +324,7 @@ Ergebnis: Zieltests 56/56 gruen; Gesamtsuite 153/153 gruen; Lint, Typecheck und 
 | 11 | Persistenz, Import/Export (JSON/PDF/Excel) | DONE |
 | 12 | Validierung, Annahmen/Disclaimer, Doku & Polish | DONE |
 | 13 | Haltedauer- & Verkaufsanalyse (Exit-Jahr-Matrix, EK-Profitabilitaet) | DONE |
+| 14 | Agentenmodus produktiv mit Supabase integrieren | TODO |
 
 ---
 
@@ -670,10 +674,10 @@ cd app && npm run typecheck && npm run build && npm run test
 ## Story 13 - Haltedauer- & Verkaufsanalyse (Exit-Jahr-Matrix, EK-Profitabilitaet)
 Prioritaet: Hoch | Status: DONE (2026-06-20)
 
-Kontext: Story 6 berechnet EINEN gewaehlten Exit. Story 13 beantwortet explizit "Was kommt raus, wenn ich nach X Jahren verkaufe?" - fuer JEDES moegliche Verkaufsjahr, inkl. des bis dahin (oft negativen) aufgelaufenen Cashflows, und uebersetzt das in EK-Profitabilitaet p. a. UND insgesamt.
+Kontext: Story 6 berechnet EINEN gewaehlten Exit. Story 13 beantwortet explizit "Was kommt raus, wenn ich nach X Jahren verkaufe?" - fuer JEDES moegliche Verkaufsjahr bis zur maximal unterstuetzten Haltedauer (aktuell 40 Jahre), unabhaengig von der aktuell gewaehlten Haltedauer, inkl. des bis dahin (oft negativen) aufgelaufenen Cashflows. Dadurch kann der Nutzer die Haltedauer anhand des optimalen Exit-Jahrs auswaehlen.
 
 Anforderungen:
-- Funktion `analyzeHoldingPeriods(scenario)` in `src/engine/holding.ts`, die fuer jedes Jahr `t = 1..N` einen Exit-an-diesem-Jahr durchrechnet und je `t` liefert:
+- Funktion `analyzeHoldingPeriods(scenario)` in `src/engine/holding.ts`, die fuer jedes Jahr `t = 1..H` mit dem maximalen Vergleichshorizont `H = 40` einen Exit-an-diesem-Jahr durchrechnet und je `t` liefert:
   - **Netto-Verkaufserloes(t)** = projizierter Immobilienwert(t) - Verkaufsnebenkosten - Restschuld(t) - ggf. Vorfaelligkeit.
   - **Spekulationssteuer(t)** nach §23 EStG: im Jahresraster bei `t <= 10` und Gewinn >= 1.000 EUR Gewinn (Verkaufspreis - Verkaufsnebenkosten - Vorfaelligkeit - Anschaffungs-/Herstellungskosten + kumulierte AfA bis t) * Grenzsteuersatz bzw. Tarifdelta; ab `t >= 11` = 0 (steuerfrei).
   - **Kumulierter Cashflow nach Steuer(t)** = Summe der jaehrlichen Cashflows nach Steuer von Jahr 1..t (kann negativ sein und MUSS in den Gewinn einfliessen).
@@ -681,15 +685,15 @@ Anforderungen:
   - **EK-Profitabilitaet insgesamt(t)** = Gesamtgewinn(t) / eingesetztes Eigenkapital (Gesamt-Multiple bzw. Gesamtrendite ueber die Haltedauer).
   - **EK-Profitabilitaet p. a.(t)** = annualisierte Rendite: IRR der EK-Cashflows (-EK in t0, jaehrliche Cashflows nach Steuer, + Netto-Verkaufserloes - Spekulationssteuer in t) sowie alternativ CAGR auf Basis Gesamt-Multiple; beide ausweisen.
   - Zusatzspalten: Restschuld(t), Immobilienwert(t), enthaltene Spekulationssteuer ja/nein, Break-even-Jahr (erstes `t` mit Gesamtgewinn >= 0).
-- Ableitung "lohnt sich?"-Hilfen: bestes Exit-Jahr nach IRR; Markierung der Steuerfreiheit ab Exit-Jahr 11; Vergleich der p.-a.-Rendite gegen eine eingegebene Zielrendite (Ampel).
-- UI-Anbindung: Tabelle "Verkauf nach Jahr X" + Chart (Gesamtgewinn und IRR ueber das Exit-Jahr), Hervorhebung der Schwelle ab Jahr 11. (Nutzt Story 9-Bausteine.)
+- Ableitung "lohnt sich?"-Hilfen: bestes Exit-Jahr nach IRR im gesamten Maximalhorizont, unabhaengig von der gewaehlten Haltedauer; Markierung der Steuerfreiheit ab Exit-Jahr 11; Vergleich der p.-a.-Rendite gegen eine eingegebene Zielrendite (Ampel).
+- UI-Anbindung: Tabelle "Verkauf nach Jahr X" + Chart (Gesamtgewinn und IRR ueber alle 40 Exit-Jahre), Hervorhebung der Schwelle ab Jahr 11 und der aktuell gewaehlten Haltedauer. (Nutzt Story 9-Bausteine.)
 
 When complete:
-- `analyzeHoldingPeriods` liefert fuer alle `t = 1..N` konsistente Werte; Summen-/Identitaetscheck: Exit im gewaehlten Haltejahr stimmt mit Story 6 ueberein (Toleranz < 1 EUR).
+- `analyzeHoldingPeriods` liefert unabhaengig von der aktuell gewaehlten Haltedauer fuer alle `t = 1..40` konsistente Werte; das beste Exit-Jahr und seine IRR bleiben bei reiner Aenderung der gewaehlten Haltedauer identisch. Summen-/Identitaetscheck: Exit im gewaehlten Haltejahr stimmt mit Story 6 ueberein (Toleranz < 1 EUR).
 - Negativer kumulierter Cashflow wird nachweislich vom Verkaufserloes abgezogen (Test mit unterdecktem Szenario).
 - Spekulationssteuer ist bei `t = 10` mit Gewinn >= 1.000 EUR > 0 und ab `t = 11` = 0 (Test).
 - EK-Profitabilitaet wird p. a. (IRR + CAGR) UND insgesamt (Multiple) ausgewiesen; Referenzfall plausibel.
-- UI zeigt Exit-Jahr-Tabelle + Chart, inkl. Markierung der Steuerfreiheit ab Jahr 11 und bestem Exit-Jahr.
+- UI zeigt die Exit-Jahr-Tabelle + Chart bis Jahr 40, inkl. Markierung der Steuerfreiheit ab Jahr 11, der gewaehlten Haltedauer und des global besten Exit-Jahrs.
 - Output: `<promise>COMPLETE</promise>`
 
 Verify:
@@ -702,7 +706,107 @@ Abhaengigkeiten:
 - Story 2-6 (Projektion, Exit, Metrics/IRR). UI nutzt Story 9.
 
 Risiken/Tradeoffs:
-- IRR pro Exit-Jahr ist rechenintensiv (N Loesungen) - akzeptabel bei N <= 50; Ergebnisse memoizen. Bei sehr fruehen Exit-Jahren kann IRR mehrdeutig/instabil sein -> robusten Solver + Fallback auf CAGR.
+- IRR pro Exit-Jahr ist rechenintensiv (H Loesungen) - akzeptabel beim festen Horizont H = 40; Ergebnisse memoizen. Bei sehr fruehen Exit-Jahren kann IRR mehrdeutig/instabil sein -> robusten Solver + Fallback auf CAGR.
+
+---
+
+## Story 14 - Agentenmodus produktiv mit Supabase integrieren
+Prioritaet: Hoch | Status: TODO
+
+Kontext:
+- Der lokale Produktcode fuer Agent-Drafts, Agent Edit Mode, Browser-Agent-API, OAuth-Freigabedialog, Verbindungsverwaltung, MCP-Draft-Inbox, Analyse-Snapshots, SQL-Migration und Edge Function ist vorhanden.
+- Produktiv unvollstaendig sind die umgebungsgebundenen Teile: echte Datenbankmigration, Supabase-OAuth- und Hook-Konfiguration, Function-Deployment, kanonisches RFC-9728-Metadatenrouting, externe Rate-Limits und Live-Abnahme mit getrennten Konten.
+- MCP = Model Context Protocol (standardisierte Agenten-Werkzeugschnittstelle). RLS = Row Level Security (datenbankseitige Zeilenrechte). E2E = End-to-End (Pruefung des gesamten realen Ablaufs).
+
+Umsetzungsreihenfolge / TODO:
+
+1. **Staging-Preflight und Sicherung**
+   - Ziel-Supabase-Projekt, App-Host und kanonischen MCP-Host festlegen; Staging zuerst, Produktion erst nach kompletter Abnahme.
+   - Datenbanksicherung beziehungsweise getesteten Restore-Punkt erstellen und bestehende Tabellen, Funktionen, Hooks sowie permissive RLS-Policies inventarisieren.
+   - `supabase-agent-mcp.sql` gegen `SQL_CHECKSUM.md` pruefen. Unbekannte permissive Policies fachlich pruefen; die Migration darf in diesem Fall bewusst abbrechen und wird nicht durch Abschalten der Schutzpruefung erzwungen.
+
+2. **Datenbankmigration einspielen und pruefen**
+   - Bei Bestandsinstallationen zuerst `supabase-auth-admin-migration.sql`, anschliessend die aktuelle `supabase-agent-mcp.sql` ausfuehren; bei Neuinstallationen `supabase-setup.sql` plus `supabase-agent-mcp.sql`.
+   - Tabellen, Constraints, Trigger, RPCs (Remote Procedure Calls, aufrufbare Datenbankfunktionen), Grants und RLS-Policies fuer `scenarios`, `scenario_drafts`, `agent_oauth_grants`, `profiles` und `agent_mcp_config` pruefen.
+   - Agent-Feldparitaet zwischen App, Edge Function und SQL-Validator fuer aktuell 68 Pfade pruefen. Erst danach `agent_mcp_config` mit exakt der kanonischen Audience aktivieren.
+
+3. **Supabase OAuth und Token-Hook konfigurieren**
+   - OAuth-Server aktivieren, Authorization Path auf den produktiven Immo-Checker-Freigabedialog setzen und Redirect-URLs fuer App und MCP-Clients erlauben.
+   - Betriebsmodell entscheiden und dokumentieren: DCR (Dynamic Client Registration, dynamische Client-Registrierung) oder vorregistrierte Clients. Beide muessen denselben nutzer- und clientgebundenen Grant-Pfad verwenden.
+   - Asymmetrischen JWT-Signaturschluessel (z. B. ES256/RS256) verwenden und den Custom Access Token Hook `public.custom_access_token_hook` aktivieren.
+   - Positiv und negativ pruefen: Nur ein genehmigtes Konto-Client-Paar erhaelt `aud` und `immo_checker_mcp=true`; normale Web-Sessions, nicht genehmigte Profile und widerrufene Grants erhalten keinen MCP-Zugriff.
+
+4. **Edge Function konfigurieren und deployen**
+   - `MCP_RESOURCE_URI` auf die kanonische HTTPS-Resource und `MCP_ALLOWED_ORIGINS` auf die explizit erlaubten App-Origins setzen; keine Wildcards, Credentials, Querystrings oder Fragmente.
+   - `agent-mcp` deployen. Die Function nutzt nur Publishable-/Anon-Key plus Nutzer-Bearer-Token, niemals einen Service-Role-Key.
+   - Vor Deployment `deno check`, `deno lint` und `deno fmt --check` ausfuehren; CORS, Request-/Response-Groessen und die absichtlich oeffentliche Discovery-Antwort pruefen.
+
+5. **Kanonisches Metadata-Routing bereitstellen**
+   - MCP-Resource und die aus ihr abgeleitete RFC-9728-Route `/.well-known/oauth-protected-resource/...` ueber einen kontrollierten Custom Host, ein Gateway oder einen Reverse Proxy auf dieselbe Edge Function routen.
+   - Oeffentliche Metadaten muessen die kanonische Resource und den richtigen Authorization Server ausweisen. Nicht authentifizierte MCP-Aufrufe muessen eine passende `401`-Antwort mit `WWW-Authenticate` liefern; ungueltige Tokens zusaetzlich `invalid_token`.
+
+6. **Externe Schutzgrenzen und Betrieb einrichten**
+   - Rate-Limits mindestens pro IP, nach Moeglichkeit zusaetzlich pro `client_id` und Konto am Gateway/Proxy/WAF (Web Application Firewall) konfigurieren.
+   - Harte Request-Groessen, Timeouts und begrenzte Parallelitaet setzen. Logs und Alarme duerfen weder Bearer-Tokens noch Draft-/Szenario-Payloads enthalten.
+   - Alarmierung fuer uebermaessige `401`/`403`/`429`, Function-Fehler und Datenbank-Constraint-Verletzungen sowie einen dokumentierten Rollback-/Grant-Revoke-Ablauf einrichten.
+
+7. **App-Deployment verbinden**
+   - Produktive Supabase-URL und Publishable-/Anon-Key ueber die vorhandenen Vite-Variablen setzen, ohne Secrets ins Repository zu schreiben.
+   - Login, Freigabedialog, `Agent-Verbindungen`, manuelles Laden der MCP-Inbox und das Agent-Dropdown auf dem produktiven App-Host pruefen.
+   - Sicherstellen, dass Auth-Mail-Redirects und der OAuth-Authorization-Path die reale App-Basis-URL treffen.
+
+8. **Live-E2E-Abnahme mit mindestens zwei Konten**
+   - Konto A und Konto B getrennt freigeben. Fuer Konto A einen MCP-Client verbinden, Consent anzeigen, Draft anlegen/aktualisieren/lesen und eine gespeicherte Analyse lesen.
+   - Nachweisen, dass Konto B weder Szenarien, Drafts, Analysen noch Grants von Konto A auflisten oder lesen kann; manipulierte IDs und falsche `client_id` muessen mit `403`/nicht sichtbar enden.
+   - Nachweisen, dass der MCP-Client keine finalen Szenarien erstellen, aendern oder loeschen und keine Admin-RPCs aufrufen kann.
+   - CAS-Konflikt (Compare-and-Swap, revisionsgebundene Aktualisierung), ungueltige/zu grosse Drafts, unbekannte Origins, abgelaufene Tokens und Rate-Limit-Ueberschreitung negativ testen.
+   - Grant in `Agent-Verbindungen` widerrufen und nachweisen, dass auch ein noch nicht abgelaufenes Token sofort gesperrt ist. Teilzustaende aus nur OAuth- oder nur MCP-Grant muessen sichtbar und bereinigbar bleiben.
+   - Draft aus der MCP-Inbox erst nach Nutzeraktion laden, als sicheren Zwischenstand oeffnen, pruefen und erst ueber den normalen Speichern-Flow finalisieren.
+
+9. **Gestufter Rollout und Abschlussnachweis**
+   - Staging-Abnahmeprotokoll mit Migration, Konfiguration, anonymisierten Testresultaten und Rollback-Ergebnis ablegen.
+   - Produktion zunaechst fuer wenige freigegebene Konten aktivieren; nach Beobachtungsphase Rate-Limits und Fehlerraten pruefen.
+   - Erst wenn alle nachfolgenden Erfolgskriterien belegt sind, Story 14 auf `DONE` setzen und Deferred-Verify-Register, `activity.md`, `memory.md` sowie Betriebsdokumentation aktualisieren.
+
+When complete:
+- Migration und aktueller SQL-Checksum-Stand sind in Staging und Produktion nachvollziehbar angewendet; alle erwarteten Constraints/RLS-Policies sind aktiv.
+- OAuth-Consent bindet sichtbar das richtige Konto an den richtigen Client. Direkte Web-Sessions bleiben funktionsfaehig, erhalten aber keine MCP-Claims.
+- Kanonische Protected Resource Metadata, OAuth-Discovery und `401`-Challenge funktionieren ueber die produktive HTTPS-URL.
+- Alle vorgesehenen MCP-Werkzeuge funktionieren fuer eigene Daten; finale Szenario-Schreib-/Loesch- und Admin-Zugriffe existieren nicht.
+- Zwei-Konten-Isolation, Grant-Widerruf, Origin-Schutz, Eingabegrenzen, CAS-Konflikt und externe Rate-Limits sind live negativ getestet.
+- Die produktive App zeigt Agent-Dropdown, Freigabedialog, Verbindungsverwaltung und MCP-Inbox ohne automatische Draft-Uebernahme.
+- Keine Service-Role-Credentials im Function-Pfad, Browser-Bundle, Repository oder in Logs.
+- Lokale App-Pruefkette, Deno-Pruefung und dokumentierter Live-E2E-Lauf sind gruen; Rollback und Monitoring sind dokumentiert.
+
+Verify:
+```bash
+shasum -a 256 supabase-agent-mcp.sql
+
+cd app
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+
+cd ..
+deno check supabase/functions/agent-mcp/index.ts
+deno lint supabase/functions/agent-mcp/index.ts
+deno fmt --check supabase/functions/agent-mcp/index.ts
+```
+
+Live-Verify (gegen Staging, spaeter identisch gegen Produktion):
+- Kanonische Metadata-URL per `curl -i` auf `200`, Inhalt und HTTPS pruefen.
+- MCP-Resource ohne Token auf `401` plus `WWW-Authenticate`, mit falschem/entzogenem Token auf `401` oder `403` pruefen.
+- Vollstaendige Zwei-Konten-Matrix fuer `list_scenarios`, `get_scenario`, `create_draft`, `update_draft` und `analyze_scenario` protokollieren.
+- Gateway-Limit kontrolliert ausloesen und `429` ohne Token-/Payload-Leak im Log nachweisen.
+
+Abhaengigkeiten:
+- Supabase-Projektzugriff, SQL-Editor/CLI, OAuth-Server-Konfiguration, Hook-Aktivierung, asymmetrischer JWT-Key, Edge-Function-Deployment, DNS/Custom Host oder Reverse Proxy sowie zwei reale Testkonten.
+
+Risiken/Tradeoffs:
+- Diese Story ist sicherheits- und umgebungsgebunden. Lokale Tests ersetzen weder RLS-/OAuth-Isolation noch Gateway-Konfiguration.
+- DCR erhoeht die Client-Kompatibilitaet, vergroessert aber die Zahl registrierter Clients; Vorregistrierung ist enger kontrollierbar, braucht jedoch Betreiberpflege.
+- `verify_jwt = false` bleibt nur deshalb zulaessig, weil die Function Discovery oeffentlich bedienen und jeden geschuetzten Aufruf selbst kryptografisch plus per RLS/RPC pruefen muss.
 
 ---
 

@@ -122,31 +122,17 @@ export function buildAmortizationSchedule(input: AmortizationInput): Amortizatio
       currentYearTilgung += tilgung;
       laufzeitMonate = currentMonth;
       
-      // End of year processing if loan is fully paid mid-year
-      const monthsInYear = currentMonth % 12;
-      if (monthsInYear > 0) {
-        // Aggregate partial year
-        years.push({
-          jahr: currentYear,
-          anfangsbestand: currentYearAnfang,
-          zinsen: currentYearZinsen,
-          tilgung: currentYearTilgung,
-          sondertilgung: currentYearSondertilgung,
-          annuitaet: currentYearZinsen + currentYearTilgung,
-          endbestand: 0,
-        });
-      } else {
-        // Exact end of year
-        years.push({
-          jahr: currentYear,
-          anfangsbestand: currentYearAnfang,
-          zinsen: currentYearZinsen,
-          tilgung: currentYearTilgung,
-          sondertilgung: currentYearSondertilgung,
-          annuitaet: currentYearZinsen + currentYearTilgung,
-          endbestand: 0,
-        });
-      }
+      // Letztes (ggf. angebrochenes) Jahr abschliessen: Voll- und Teiljahr werden
+      // identisch aggregiert, der Endbestand ist in beiden Faellen 0.
+      years.push({
+        jahr: currentYear,
+        anfangsbestand: currentYearAnfang,
+        zinsen: currentYearZinsen,
+        tilgung: currentYearTilgung,
+        sondertilgung: currentYearSondertilgung,
+        annuitaet: currentYearZinsen + currentYearTilgung,
+        endbestand: 0,
+      });
       break;
     } else {
       currentDebt -= tilgung;

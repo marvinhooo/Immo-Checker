@@ -120,6 +120,8 @@ describe('Dashboard-Jahresauswahl', () => {
       draft.miete.leerstandPct = 3;
       draft.kosten.kostenErfassungMode = 'detailliert';
       draft.kosten.maintenanceMode = 'absolute';
+      draft.kosten.instandhaltungProSqm = 21;
+      draft.kosten.instandhaltungPctRent = 9;
       draft.kosten.instandhaltungAbsolut = 777;
       draft.kosten.umlagefaehigeKostenProJahr = 1194.99;
       draft.kosten.nichtUmlagefaehigeKostenProJahr = 554.06;
@@ -128,6 +130,7 @@ describe('Dashboard-Jahresauswahl', () => {
     render(<App />);
 
     fireEvent.click(screen.getByText('Laufende Kosten').closest('button') as HTMLButtonElement);
+    expect(screen.getByText('Berechnungsart laufende Kosten')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Direkt aus Wirtschaftsplan' }));
 
     expect(screen.getByLabelText('Summe umlagefähige Kosten')).toHaveValue(formatEUR(1194.99, 2));
@@ -155,8 +158,21 @@ describe('Dashboard-Jahresauswahl', () => {
     expect(screen.getByLabelText('Durchschnittliche Verzögerung')).toHaveValue('5 Jahre');
 
     fireEvent.click(screen.getByRole('button', { name: 'Detaillierte Schätzung' }));
+    expect(screen.getByText('Berechnungsart Instandhaltung')).toBeInTheDocument();
     expect(screen.getByLabelText('Instandhaltung pro Jahr')).toHaveValue(formatEUR(777));
     expect(useScenarioStore.getState().active.kosten.umlagefaehigeKostenProJahr).toBe(1194.99);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pro m²/Jahr' }));
+    expect(screen.getByLabelText('Instandhaltung pro m²/Jahr')).toHaveValue('21');
+    fireEvent.click(screen.getByRole('button', { name: '% der Miete' }));
+    expect(screen.getByLabelText('Instandhaltung (% der Kaltmiete)')).toHaveValue('9');
+    fireEvent.click(screen.getByRole('button', { name: 'Absolut p. a.' }));
+    expect(screen.getByLabelText('Instandhaltung pro Jahr')).toHaveValue(formatEUR(777));
+    expect(useScenarioStore.getState().active.kosten).toMatchObject({
+      instandhaltungProSqm: 21,
+      instandhaltungPctRent: 9,
+      instandhaltungAbsolut: 777,
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Direkt aus Wirtschaftsplan' }));
     expect(screen.getByLabelText('Summe umlagefähige Kosten')).toHaveValue(formatEUR(1194.99, 2));
@@ -174,12 +190,16 @@ describe('Dashboard-Jahresauswahl', () => {
     });
     render(<App />);
 
-    expect(screen.getByText(/konservativ mit/).closest('p')).toHaveTextContent('30 % Bodenanteil');
+    expect(screen.getByText('Berechnungsart Bodenwert')).toBeInTheDocument();
+    expect(screen.getByText(/30-%-Standardannahme/).closest('p')).toHaveTextContent('nicht an jedem Standort automatisch konservativ');
+    expect(screen.getByText(/entspricht diese 30-%-Annahme/).closest('p')).toHaveTextContent('509,3 m²');
+    expect(screen.getByText(/entspricht diese 30-%-Annahme/).closest('p')).toHaveTextContent('größer');
     expectNormalizedText(screen.getByText(/Bodenwert:/).closest('div'), formatEUR(18000));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Boden %' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Prozent vom Kaufpreis' }));
     expect(screen.getByLabelText('Bodenwertanteil (%)')).toHaveValue('17');
-    fireEvent.click(screen.getByRole('button', { name: 'EUR/m²' }));
+    expectNormalizedText(screen.getByText(/Bodenwert:/).closest('div'), formatEUR(10200));
+    fireEvent.click(screen.getByRole('button', { name: 'Bodenrichtwert (€/m²) × Fläche' }));
 
     expect(screen.getByLabelText('Bodenrichtwert (€/m²)')).toHaveValue('620 EUR/m²');
     expect(screen.getByLabelText('Grundstück gesamt (m²)')).toHaveValue('0');
@@ -192,6 +212,8 @@ describe('Dashboard-Jahresauswahl', () => {
     fireEvent.blur(meaNumerator);
     expect(useScenarioStore.getState().active.objekt.miteigentumsanteilZaehler).toBe(1001);
     expect(useScenarioStore.getState().active.objekt.miteigentumsanteilNenner).toBe(1000);
+    expect(useScenarioStore.getState().active.objekt.bodenwertAnteilPct).toBe(17);
+    expect(useScenarioStore.getState().active.objekt.bodenrichtwertProSqm).toBe(620);
   });
 
   it('zeigt markierte Modernisierungen als Prüfhinweis im Mietbereich', () => {
@@ -254,6 +276,18 @@ describe('Dashboard-Jahresauswahl', () => {
     const taxFreeBadge = screen.getByText('(Modell: steuerfrei)');
     expect(taxFreeBadge.closest('td')).toHaveTextContent('11');
     expect(taxFreeBadge.closest('td')).not.toHaveTextContent('10(Modell: steuerfrei)');
+  });
+
+  it('vergleicht das beste Exit-Jahr unabhängig von der gewählten Haltedauer bis Jahr 40', () => {
+    useScenarioStore.getState().updateActive((draft) => {
+      draft.exit.haltedauerJahre = 3;
+    });
+
+    render(<App />);
+
+    expect(screen.getByText(/Bester Verkauf im Vergleich von Jahr 1 bis 40/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Verkauf$/ }));
+    expect(screen.getByText(/alle Verkaufsjahre 1 bis 40/)).toBeInTheDocument();
   });
 
   it('zeigt einen Cloud-Sync-Fehler als schließbare Warnung', () => {

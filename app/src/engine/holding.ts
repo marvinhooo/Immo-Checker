@@ -2,6 +2,7 @@ import { Scenario } from './types';
 import { runProjection } from './projection';
 import { calculateExit } from './exit';
 import { computeIRR } from './metrics';
+import { MAX_HOLDING_PERIOD_YEARS } from './constants';
 
 export interface HoldingYearAnalysis {
   jahr: number;
@@ -30,20 +31,23 @@ export interface HoldingAnalysis {
   initialEquity: number;
   years: HoldingYearAnalysis[];
   breakEvenJahr: number | null; // erstes Jahr mit Gesamtgewinn >= 0
-  besteExitJahrNachIrr: number | null; // Exit-Jahr mit der hoechsten IRR
+  besteExitJahrNachIrr: number | null; // Exit-Jahr mit der hoechsten IRR im maximalen Vergleichshorizont
   steuerfreiAbJahr: number; // ab diesem Exit-Jahr (11) entfaellt die Spekulationssteuer (§23: > 10 Jahre)
 }
 
 /**
- * Berechnet fuer JEDES moegliche Verkaufsjahr t = 1..N den realisierten Gesamtgewinn
+ * Berechnet fuer JEDES moegliche Verkaufsjahr t = 1..MAX_HOLDING_PERIOD_YEARS den realisierten Gesamtgewinn
  * und die Eigenkapital-Profitabilitaet (p. a. via IRR/CAGR sowie insgesamt als Multiple),
  * inklusive des bis dahin aufgelaufenen (ggf. negativen) Cashflows und der Spekulationssteuer.
+ *
+ * Der Vergleichshorizont ist bewusst unabhaengig von der aktuell gewaehlten Haltedauer,
+ * damit diese anhand des besten Exit-Jahrs ausgewaehlt werden kann.
  *
  * Wiederverwendet Story 6 (calculateExit) und den IRR-Solver (computeIRR), damit der
  * Eintrag fuer das gewaehlte Haltejahr exakt mit der Einzel-Exit-Berechnung uebereinstimmt.
  */
 export function analyzeHoldingPeriods(scenario: Scenario): HoldingAnalysis {
-  const N = Math.max(1, scenario.exit.haltedauerJahre);
+  const N = MAX_HOLDING_PERIOD_YEARS;
   const projection = runProjection(scenario, N);
   const initialEquity = projection.initialEquity;
 

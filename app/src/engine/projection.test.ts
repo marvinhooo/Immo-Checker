@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { createDefaultScenario } from './defaults';
 import { runProjection } from './projection';
+import { calculateExit } from './exit';
+import { projectEndOfYearSeries } from './timeline';
 
 describe('Projection Engine', () => {
   it('should run a projection for the default scenario and verify basic consistency', () => {
@@ -508,5 +510,116 @@ describe('Projection Engine', () => {
     // cashflowVorSteuer = 6000 - zins - tilgung - 800
     expect(y1.cashflowVorSteuer).toBeCloseTo(6000 - y1.zins - y1.tilgung - 800, 2);
     expect(y1.cashflowNachSteuer).toBeCloseTo(y1.cashflowVorSteuer - y1.steuereffekt, 2);
+  });
+
+  it('reports the property value as an end-of-year stock value, consistent with projectEndOfYearSeries', () => {
+    const scenario = createDefaultScenario({
+      objekt: { kaufpreis: 100000 },
+      wertentwicklung: {
+        szenario: [
+          { id: 'r1', kind: 'rate', fromYear: 1, percentPerYear: 2 },
+          { id: 's1', kind: 'step', fromYear: 3, percent: 10 },
+        ],
+      },
+      exit: { haltedauerJahre: 5 },
+    });
+
+    const result = runProjection(scenario, 5);
+    const expected = projectEndOfYearSeries(100000, scenario.wertentwicklung.szenario, 5);
+
+    // Ende Jahr 1 liegt bereits ueber dem Kaufpreis (Wert ist eine Bestandsgroesse).
+    expect(result.years[0].immobilienwert).toBeCloseTo(102000, 2);
+    // Die Stufe ab Jahr 3 wirkt exakt in Jahr 3, nicht in Jahr 2.
+    expect(result.years[1].immobilienwert).toBeCloseTo(104040, 2);
+    expect(result.years[2].immobilienwert).toBeCloseTo(104040 * 1.02 * 1.1, 2);
+
+    for (let i = 0; i < 5; i++) {
+      expect(result.years[i].immobilienwert).toBeCloseTo(expected[i], 6);
+    }
+  });
+
+  it('never lets the cumulative reserve withdrawal exceed the cumulative contribution', () => {
+    const scenario = createDefaultScenario({
+      kosten: {
+        kostenErfassungMode: 'wirtschaftsplan',
+        umlagefaehigeKostenProJahr: 1200,
+        nichtUmlagefaehigeKostenProJahr: 700,
+        wegRuecklageProJahr: 500,
+        ruecklagenVerwendungPct: 100,
+        ruecklagenVerzoegerungJahre: 1,
+        kostensteigerungPctPa: 3,
+      },
+      exit: { haltedauerJahre: 20 },
+    });
+
+    const result = runProjection(scenario, 20);
+    let kumZufuehrung = 0;
+    let kumEntnahme = 0;
+    for (const y of result.years) {
+      kumZufuehrung += y.ruecklagenZufuehrung;
+      kumEntnahme += y.ruecklagenEntnahme;
+      expect(kumEntnahme).toBeLessThanOrEqual(kumZufuehrung + 1e-6);
+      expect(y.kumulierteRuecklage).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('seeds the cumulative reserve with the taken-over balance without changing the exit at 0 % price effect', () => {
+    const base = createDefaultScenario({
+      kosten: {
+        kostenErfassungMode: 'wirtschaftsplan',
+        umlagefaehigeKostenProJahr: 0,
+        nichtUmlagefaehigeKostenProJahr: 0,
+        wegRuecklageProJahr: 500,
+        ruecklagenVerwendungPct: 0,
+        ruecklagenVerzoegerungJahre: 5,
+        ruecklagenRestwertPct: 0,
+        kostensteigerungPctPa: 0,
+      },
+      exit: { haltedauerJahre: 5, verkaufsnebenkostenPct: 0, vorfaelligkeitPct: 0 },
+    });
+    const withBestand = createDefaultScenario({
+      ...base,
+      kosten: { ...base.kosten, ruecklagenBestandBeiKauf: 4000 },
+    });
+
+    const baseProj = runProjection(base, 5);
+    const bestandProj = runProjection(withBestand, 5);
+
+    // Der uebernommene Bestand hebt den kumulierten Ruecklagenstand um genau 4000 an.
+    for (let i = 0; i < 5; i++) {
+      expect(bestandProj.years[i].kumulierteRuecklage).toBeCloseTo(baseProj.years[i].kumulierteRuecklage + 4000, 6);
+    }
+
+    // Bei 0 % Preiswirkung bleibt der Exit-Erloes identisch (keine stillschweigende Ergebnisaenderung).
+    const baseExit = calculateExit(base, baseProj);
+    const bestandExit = calculateExit(withBestand, bestandProj);
+    expect(bestandExit.ruecklagenRestwert).toBe(0);
+    expect(bestandExit.verkaufspreis).toBeCloseTo(baseExit.verkaufspreis, 6);
+    expect(bestandExit.nettoVerkaufserloesNachSteuer).toBeCloseTo(baseExit.nettoVerkaufserloesNachSteuer, 6);
+  });
+
+  it('turns the taken-over reserve balance into an exit price effect once the price-effect quote is positive', () => {
+    const scenario = createDefaultScenario({
+      kosten: {
+        kostenErfassungMode: 'wirtschaftsplan',
+        umlagefaehigeKostenProJahr: 0,
+        nichtUmlagefaehigeKostenProJahr: 0,
+        wegRuecklageProJahr: 0,
+        ruecklagenVerwendungPct: 0,
+        ruecklagenVerzoegerungJahre: 5,
+        ruecklagenBestandBeiKauf: 4000,
+        ruecklagenRestwertPct: 50,
+        kostensteigerungPctPa: 0,
+      },
+      exit: { haltedauerJahre: 5, verkaufsnebenkostenPct: 0, vorfaelligkeitPct: 0 },
+    });
+
+    const proj = runProjection(scenario, 5);
+    const exit = calculateExit(scenario, proj);
+    // Ohne Zufuehrung/Entnahme bleibt der uebernommene Bestand konstant.
+    expect(proj.years[4].kumulierteRuecklage).toBeCloseTo(4000, 6);
+    // 50 % von 4000 EUR Bestand fliessen als Marktpreiswirkung in den Verkaufspreis.
+    expect(exit.ruecklagenRestwert).toBeCloseTo(2000, 6);
+    expect(exit.verkaufspreis).toBeCloseTo(proj.years[4].immobilienwert + 2000, 6);
   });
 });

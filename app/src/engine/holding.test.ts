@@ -4,16 +4,34 @@ import { runProjection } from './projection';
 import { calculateExit } from './exit';
 import { calculateMetrics } from './metrics';
 import { analyzeHoldingPeriods } from './holding';
+import { MAX_HOLDING_PERIOD_YEARS } from './constants';
 
 describe('Holding-period analysis (Story 13)', () => {
-  it('produces one row per holding year', () => {
+  it('produces one row per possible holding year up to the configured maximum', () => {
     const scenario = createDefaultScenario(); // haltedauer 15
     const analysis = analyzeHoldingPeriods(scenario);
-    expect(analysis.years).toHaveLength(15);
+    expect(analysis.years).toHaveLength(MAX_HOLDING_PERIOD_YEARS);
     expect(analysis.years.map((y) => y.jahr)).toEqual(
-      Array.from({ length: 15 }, (_, i) => i + 1),
+      Array.from({ length: MAX_HOLDING_PERIOD_YEARS }, (_, i) => i + 1),
     );
     expect(analysis.initialEquity).toBeGreaterThan(0);
+  });
+
+  it('finds the same best exit year regardless of the currently selected holding period', () => {
+    const shortHolding = createDefaultScenario({
+      exit: { haltedauerJahre: 3 },
+    });
+    const longHolding = createDefaultScenario({
+      exit: { haltedauerJahre: 30 },
+    });
+
+    const shortAnalysis = analyzeHoldingPeriods(shortHolding);
+    const longAnalysis = analyzeHoldingPeriods(longHolding);
+
+    expect(shortAnalysis.besteExitJahrNachIrr).toBe(longAnalysis.besteExitJahrNachIrr);
+    expect(shortAnalysis.years.map((year) => year.irrPct)).toEqual(
+      longAnalysis.years.map((year) => year.irrPct),
+    );
   });
 
   it('matches the single-exit calculation (Story 6) for the chosen holding year', () => {

@@ -144,7 +144,7 @@ export function requiredAgentFieldPaths(scenario: Scenario): string[] {
         ? '/miete/kaltmieteProSqm'
         : '/miete/kaltmieteProMonat',
     '/kosten/kostenErfassungMode',
-    ...((scenario.kosten.kostenErfassungMode ?? 'detailliert') === 'wirtschaftsplan'
+    ...(scenario.kosten.kostenErfassungMode === 'wirtschaftsplan'
       ? [
           '/kosten/umlagefaehigeKostenProJahr',
           '/kosten/nichtUmlagefaehigeKostenProJahr',

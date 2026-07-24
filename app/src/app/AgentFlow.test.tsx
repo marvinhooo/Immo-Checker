@@ -23,6 +23,12 @@ vi.mock('../lib/sync', () => ({
 const initialAuthState = useAuthStore.getState();
 const initialScenarioState = useScenarioStore.getState();
 
+function openAgentMenu(): HTMLElement {
+  const trigger = screen.getByRole('button', { name: 'Agent-Menü' });
+  fireEvent.click(trigger);
+  return trigger;
+}
+
 describe('Agent-Draft-Ablauf', () => {
   beforeEach(() => {
     const active = createDefaultScenario({ name: 'Aktuelles Konto-Szenario' });
@@ -51,10 +57,36 @@ describe('Agent-Draft-Ablauf', () => {
     useScenarioStore.setState(initialScenarioState, true);
   });
 
+  it('buendelt alle Agent-Aktionen in einem zugaenglichen Dropdown', () => {
+    render(<App />);
+
+    const trigger = screen.getByRole('button', { name: 'Agent-Menü' });
+    expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('menu', { name: 'Agent-Aktionen' })).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+
+    const menu = screen.getByRole('menu', { name: 'Agent-Aktionen' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(4);
+    expect(within(menu).getByRole('menuitem', { name: 'Agent-Entwurf' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'MCP-Inbox' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Agent-Verbindungen' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Agent-Snapshot' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitemcheckbox', { name: 'Browser-Agent-Verbindung' }))
+      .toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    expect(screen.queryByRole('menu', { name: 'Agent-Aktionen' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it('stellt einen validierten Draft bereit, ohne das aktuelle Szenario zu ersetzen oder zu speichern', async () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Agent-Entwurf' }));
+    openAgentMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Agent-Entwurf' }));
     fireEvent.click(screen.getByRole('button', { name: 'Beispiel einsetzen' }));
     fireEvent.click(screen.getByRole('button', { name: 'Entwurf prüfen und übernehmen' }));
 
@@ -89,7 +121,8 @@ describe('Agent-Draft-Ablauf', () => {
     render(<App />);
     expect(window.immoCheckerAgent).toBeUndefined();
 
-    fireEvent.click(screen.getByRole('switch', { name: 'Browser-Agent-Verbindung' }));
+    openAgentMenu();
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Browser-Agent-Verbindung' }));
 
     await waitFor(() => expect(window.immoCheckerAgent).toBeDefined());
     expect(window.immoCheckerAgent?.listScenarios()).toEqual([
